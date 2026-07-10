@@ -2,46 +2,41 @@
 
 Welcome! 
 
-This page provides an introduction to Horizon, a turnkey implementation designed for OEMs and suppliers interested in adopting Google Cloud’s Software-Defined Vehicle (SDV) industry solution.
+This page provides an introduction to Horizon, the Agentic Innovation Platform for SDV.
 
-The program addresses prevalent challenges within the SDV market, including the inefficiencies stemming from complex and inconsistent toolchains, the high scaling costs that impede software development, and a hardware-centric focus that constrains rapid development and innovation.
-
-## Getting started
-
-Horizon is intended to be deployed into a project within your Google Cloud tenant. The deployment is done leveraging Terraform and Argo CD.
-
-To deploy Horizon into your project, follow the steps described in the [deployment guide](https://github.com/GoogleCloudPlatform/horizon-sdv/blob/main/docs/deployment_guide.md). 
-
-We would be happy to accept your contributions, for details refer to the [contribution guide](https://github.com/GoogleCloudPlatform/horizon-sdv/blob/main/docs/contributing.md).
-
-For consultation regarding initial setup, specific use case, technology or other themes, please contact horizon-sdv@google.com.
+The platform addresses prevalent challenges within the SDV development journey by providing:
+* a scalable foundation to accelerate development and significantly reduce wait times
+* a modular approach allowing for a partial and gradual adoption of components
+* an agentic AI framework and pre-built agents to compress R&D timelines further
 
 ## Vision
 Platforms enabling efficient software development shouldn’t be differentiating, the product itself should be differentiating.
 
-Horizon provides an open-source, robust, scalable, cloud-hosted and developer friendly toolchain for the development of complex embedded software. It provides solutions for code, build, test and release.
+Horizon provides an open-source, scalable, cloud-hosted, AI-native and developer friendly toolchain for the development of complex embedded software. It provides solutions for code, build, test and release.
 
-By shifting the focus from hardware-led to software-centric development, it aims to drive faster innovation, reduce costs, and improve the quality of software development in the automotive industry.
+By shifting the focus from hardware-led to software-centric development and enabling Agentic AI in the R&D processes at scale, it aims to drive faster innovation, reduce costs, and improve the quality of software development in the automotive industry.
 
 ## Initiative
-The Horizon program is an initiative launched by Google and Accenture, poised to revolutionize the embedded software development landscape.
+Horizon is an initiative launched by Google and Accenture, poised to revolutionize the embedded software development landscape.
 
-It addresses challenges in the Software-Defined Vehicle (SDV) market such as complex and inconsistent
-toolchains leading to inefficiencies, high scaling costs that constrain software development and a
-hardware-centric focus that hinders rapid development and innovation.
+It tackles key challenges in the Software-Defined Vehicle (SDV) market, including inefficient and inconsistent toolchains, high scaling costs that limit software development, and a hardware-centric approach that blocks rapid innovation
 
 ## Streams
-The Horizon initiative consists of two streams: 
-* Stream 1 is the current focus and covers Android Platform development (AAOS IVI, AOSP). 
-* Stream 2 will focus on expanding beyond Android towards the rest of SDV, enabling cloud-based virtual development of complex system-of-systems.
+Horizon consists of two streams: 
+* Android development (AAOS IVI, AAOS SDV, AOSP). 
+* Rest of SDV, enabling cloud-based virtual development of complex system-of-systems.
 
 ## Platform overview
 ![Horizon Platform Overview](https://raw.githubusercontent.com/GoogleCloudPlatform/horizon-sdv/refs/heads/main/docs/images/horizon_platform_overview.svg)
 
+## Getting started
+Horizon is deployed into a Google Cloud project within the enterprise hierarchy. The deployment is done leveraging Terraform and Argo CD.
+To deploy Horizon into your project, follow the steps described in the [deployment guide](https://github.com/GoogleCloudPlatform/horizon-sdv/blob/main/docs/deployment_guide.md). 
+We welcome contributions - for details, refer to the [contribution guide](https://github.com/GoogleCloudPlatform/horizon-sdv/blob/main/docs/contributing.md).
+For consultation regarding an initial setup, specific use case, technology or related topics, please contact horizon-sdv@google.com.
 ## Staying up-to-date
 In case you would like to receive updates, you can [subscribe here](https://forms.gle/TFaKXqfHbF6oUAeg6). In case of questions you can directly reach out to [horizon-sdv@google.com](mailto:horizon-sdv@google.com)
 For specific technical issues you can [raise an issue on Github](https://github.com/GoogleCloudPlatform/horizon-sdv/issues).
-
 ## Disclaimer
 This is not an officially supported Google product. This project is not
 eligible for the [Google Open Source Software Vulnerability Rewards
