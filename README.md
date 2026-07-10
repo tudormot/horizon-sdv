@@ -30,13 +30,19 @@ Horizon consists of two streams:
 ![Horizon Platform Overview](https://raw.githubusercontent.com/GoogleCloudPlatform/horizon-sdv/refs/heads/main/docs/images/horizon_platform_overview.svg)
 
 ## Getting started
-Horizon is deployed into a Google Cloud project within the enterprise hierarchy. The deployment is done leveraging Terraform and Argo CD.
-To deploy Horizon into your project, follow the steps described in the [deployment guide](https://github.com/GoogleCloudPlatform/horizon-sdv/blob/main/docs/deployment_guide.md). 
+Horizon is deployed into a Google Cloud project within the enterprise hierarchy. The deployment is done leveraging Terraform and Argo CD. To deploy Horizon into your project, follow the steps described in the [deployment guide](https://github.com/GoogleCloudPlatform/horizon-sdv/blob/main/docs/deployment_guide.md). 
+
 We welcome contributions - for details, refer to the [contribution guide](https://github.com/GoogleCloudPlatform/horizon-sdv/blob/main/docs/contributing.md).
+
 For consultation regarding an initial setup, specific use case, technology or related topics, please contact horizon-sdv@google.com.
+
 ## Staying up-to-date
-In case you would like to receive updates, you can [subscribe here](https://forms.gle/TFaKXqfHbF6oUAeg6). In case of questions you can directly reach out to [horizon-sdv@google.com](mailto:horizon-sdv@google.com)
+In case you would like to receive updates, you can [subscribe here](https://forms.gle/TFaKXqfHbF6oUAeg6). 
+
+In case of questions you can directly reach out to [horizon-sdv@google.com](mailto:horizon-sdv@google.com).
+
 For specific technical issues you can [raise an issue on Github](https://github.com/GoogleCloudPlatform/horizon-sdv/issues).
+
 ## Disclaimer
 This is not an officially supported Google product. This project is not
 eligible for the [Google Open Source Software Vulnerability Rewards
