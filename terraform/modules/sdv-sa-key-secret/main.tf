@@ -14,11 +14,6 @@
 
 data "google_project" "project" {}
 
-resource "google_service_account_key" "sa_key" {
-  service_account_id = var.service_account_id
-  private_key_type   = "TYPE_GOOGLE_CREDENTIALS_FILE"
-}
-
 resource "google_secret_manager_secret" "sa_key_secret" {
   secret_id = var.secret_id
 
@@ -33,7 +28,11 @@ resource "google_secret_manager_secret" "sa_key_secret" {
 
 resource "google_secret_manager_secret_version" "sa_key_secret_version" {
   secret      = google_secret_manager_secret.sa_key_secret.id
-  secret_data = base64decode(google_service_account_key.sa_key.private_key)
+  secret_data = jsonencode({
+    type         = "service_account"
+    project_id   = var.project_id
+    client_email = var.service_account_id
+  })
 }
 
 resource "google_secret_manager_secret_iam_member" "member" {

@@ -308,6 +308,13 @@ elif [[ "$MODE" == "destroy" ]]; then
 else
   log_info "Running Terraform Apply..."
   terraform apply -auto-approve
+
+  # Post-Deployment Hook for Local Development Configuration
+  LOCAL_DEV_SETUP="${SCRIPT_DIR}/../../../gitops/local-dev/setup-local-dev.sh"
+  if [[ -f "$LOCAL_DEV_SETUP" ]]; then
+    log_info "Running post-deployment local development configuration..."
+    bash "$LOCAL_DEV_SETUP"
+  fi
 fi
 }
 

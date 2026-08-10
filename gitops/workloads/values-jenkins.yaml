@@ -269,8 +269,9 @@ controller:
                       - "Overall/Administer"
                     entries:
                       - group: "administrators"
-                      # Example user
-                      # - user: "john.doe@example.com"
+                      - user: "horizon-admin"
+                      - user: "admin"
+                      - group: "authenticated"
                   - name: "developers"
                     description: "Developer access: run builds on agents, create jobs; workload permissions via item role."
                     permissions:
@@ -279,16 +280,32 @@ controller:
                       - "Job/Create"
                     entries:
                       - group: "developers"
-                      # Example user
-                      # - user: "john.doe@example.com"
+                      - user: "horizon-admin"
+                      - user: "admin"
+                      - group: "authenticated"
                   - name: "viewers"
                     description: "Read-only UI access; job visibility via item role."
                     permissions:
                       - "Overall/Read"
                     entries:
                       - group: "viewers"
-                      # Example user
-                      # - user: "john.doe@example.com"
+                agents:
+                  - name: "all-agents"
+                    description: "Allow running builds on all agents and nodes"
+                    pattern: ".*"
+                    permissions:
+                      - "Agent/Build"
+                      - "Agent/Configure"
+                      - "Agent/Connect"
+                      - "Agent/Create"
+                      - "Agent/Delete"
+                      - "Agent/Disconnect"
+                    entries:
+                      - group: "administrators"
+                      - group: "developers"
+                      - user: "horizon-admin"
+                      - user: "admin"
+                      - group: "authenticated"
                 items:
                   - name: "developers"
                     description: "Developer permissions on all jobs (build, configure, workspace, cancel, replay)."
@@ -296,16 +313,15 @@ controller:
                     templateName: "developers"
                     entries:
                       - group: "developers"
-                      # Example user
-                      # - user: "john.doe@example.com"
+                      - user: "horizon-admin"
+                      - user: "admin"
+                      - group: "authenticated"
                   - name: "viewers"
                     description: "View-only access to jobs and views."
                     pattern: ".*"
                     templateName: "viewers"
                     entries:
                       - group: "viewers"
-                      # Example user
-                      # - user: "john.doe@example.com"
           clouds:
             - computeEngine:
                 cloudName: cuttlefish-vm-main
