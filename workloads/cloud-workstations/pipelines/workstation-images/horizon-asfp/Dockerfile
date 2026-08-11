@@ -53,9 +53,9 @@ RUN mkdir -p /etc/apt/keyrings && \
       golang \
       curl \
       wget && \
-    wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
-    apt-get install -y ./libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
-    rm libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
+    wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.2_amd64.deb && \
+    apt-get install -y ./libtinfo5_6.3-2ubuntu0.2_amd64.deb && \
+    rm libtinfo5_6.3-2ubuntu0.2_amd64.deb && \
     git clone https://github.com/google/android-cuttlefish && \
     find /android-cuttlefish -name '*.MODULE.bazel' -o -name 'MODULE.bazel' \
       | xargs sed -i 's|https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-tools|https://github.com/jaegeuk/f2fs-tools|g' && \
