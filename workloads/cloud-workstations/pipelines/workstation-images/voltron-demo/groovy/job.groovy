@@ -20,7 +20,7 @@ pipelineJob('Cloud-Workstations/Workstation-Images/Voltron Demo') {
     <p>The Dockerfile specifies a modular workstation container with: GNOME Minimal Desktop, noVNC & TigerVNC browser remote desktop, CARLA 0.9.15 simulator tooling, SOME/IP vehicle bridge, Standalone Python 3.7 runtime, AAOS 26Q2 checkout & patch utilities, Android Studio for Platform (ASfP), Cuttlefish emulator, Google Chrome, and AOSP build tooling.</p>
     <h4 style="margin-bottom: 10px;">Pushing Changes to the Registry</h4>
     <p>To push changes to the registry, set the parameter <code>NO_PUSH=false</code>.</p>
-    <p>The image will be pushed to <code>\${CLOUD_REGION}-docker.pkg.dev/\${CLOUD_PROJECT}/\${CLOUD_WS_HORIZON_VOLTRON_DEMO_IMAGE_NAME:-sdv-images/voltron-demo}</code></p>
+    <p>The image will be pushed to <code>${CLOUD_REGION}-docker.pkg.dev/${CLOUD_PROJECT}/sdv-images/voltron-demo</code></p>
     <h4 style="margin-bottom: 10px;">Verifying Changes</h4>
     <p>When working with new Dockerfile updates, it's recommended to set <code>NO_PUSH=true</code> to verify the changes before pushing the image to the registry.</p>
     <h4 style="margin-bottom: 10px;">Important Notes</h4>
