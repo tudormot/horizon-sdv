@@ -1,0 +1,24 @@
+diff --git a/sdv_core_base/sdv_samples_core_services.mk b/sdv_core_base/sdv_samples_core_services.mk
+index 149f264..f279609 100644
+--- a/sdv_core_base/sdv_samples_core_services.mk
++++ b/sdv_core_base/sdv_samples_core_services.mk
+@@ -45,7 +45,6 @@ SDV_CORE_SERVICES_SAMPLES_PACKAGES += \
+     com.android.sdv.sample.vsidl_provider.apex_with_shared_config_file \
+     com.android.sdv.sample.vsidl_vhal_proxy_integration \
+     com.android.sdv.sample.someip \
+-    carla_someip_client_cli \
+     com.sdv.google.sample.testing.sdv_dump \
+     com.google.sdv.sample.qos_scheduling \
+     com_google_sdv_sample_qos_scheduling_orchestration_configurations \
+diff --git a/sdv_media_cf/sdv_media_cf.mk b/sdv_media_cf/sdv_media_cf.mk
+index 61e642f..6608644 100644
+--- a/sdv_media_cf/sdv_media_cf.mk
++++ b/sdv_media_cf/sdv_media_cf.mk
+@@ -43,6 +43,7 @@ PRODUCT_COPY_FILES += \
+ 
+ # Cuttlefish v4l2 camera support
+ PRODUCT_PACKAGES += cuttlefish_v4l2_streamer
++PRODUCT_PACKAGES += com.android.sdv.sample.gapb
+ PRODUCT_PACKAGES += sdv_draw_camera_rust
+ 
+ # Cuttlefish loopback device based audio mixer

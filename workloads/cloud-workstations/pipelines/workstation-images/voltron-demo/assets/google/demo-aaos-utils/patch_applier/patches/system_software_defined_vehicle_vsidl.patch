@@ -1,0 +1,29 @@
+diff --git a/language/src/visitors/convert_pdk29_to_soa.rs b/language/src/visitors/convert_pdk29_to_soa.rs
+index e46c7da..2e44636 100644
+--- a/language/src/visitors/convert_pdk29_to_soa.rs
++++ b/language/src/visitors/convert_pdk29_to_soa.rs
+@@ -128,6 +128,12 @@ impl VsidlVisitorMut for ConvertPdk29ToSOA {
+                     node.topic.push(topic);
+                 }
+             }
++             else {
++
++                    let topic = format!("{}-unique", message_name ).to_kebab_case();
++                    node.topic.push(topic);
++
++            }
+         }
+     }
+ 
+@@ -155,6 +161,11 @@ impl VsidlVisitorMut for ConvertPdk29ToSOA {
+                     node.topic.push(topic);
+                 }
+             }
++             else {
++                    let topic = format!("{}-unique", message_name ).to_kebab_case();
++                    node.topic.push(topic);
++
++            }
+         }
+     }
+ 
