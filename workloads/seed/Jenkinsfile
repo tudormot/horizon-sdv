@@ -56,6 +56,12 @@ pipeline {
              <li>cloud-workstations: seed the Cloud Workstations workload.</li>
            </ul>''')
 
+    string(name: 'SEED_SCM_BRANCH',
+           defaultValue: '',
+           description: '''<p>Git branch to checkout for seeding and to bind into the generated pipeline jobs (e.g. <code>feature/my-branch</code>).<br/>
+             Leave blank to use the default branch (<code>${HORIZON_SCM_BRANCH}</code>).</p>''',
+           trim: true)
+
     separator(
       name: "Common: Docker templates",
       sectionHeader: "Common Parameters: Docker Templates",
@@ -247,6 +253,25 @@ pipeline {
   }
 
   stages {
+    stage ('Checkout Target Branch') {
+      when {
+        expression { params.SEED_SCM_BRANCH?.trim() }
+      }
+      steps {
+        script {
+          def targetBranch = params.SEED_SCM_BRANCH.trim()
+          echo "Checking out specified seed branch: ${targetBranch}"
+          sh """
+            git fetch origin "${targetBranch}"
+            git checkout "${targetBranch}" || git checkout -b "${targetBranch}" "origin/${targetBranch}"
+          """
+          replacements = replacements.collect { item ->
+            item[0] == '${HORIZON_SCM_BRANCH}' ? ['${HORIZON_SCM_BRANCH}', "${targetBranch}"] : item
+          }
+        }
+      }
+    }
+
     stage ('Workload: Seed Android') {
       when {
         anyOf {
