@@ -33,6 +33,14 @@ spec:
         imagePullPolicy: Always
         ports:
         - containerPort: 80
+        volumeMounts:
+        - name: index-html
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
+      volumes:
+      - name: index-html
+        configMap:
+          name: {{ .Values.config.namespacePrefix }}landingpage-html
 ---
 apiVersion: v1
 kind: Service
