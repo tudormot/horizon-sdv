@@ -1,0 +1,83 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+diff --git a/service/ds-toolkit/res/ds-multi-cvd-config-template.json b/service/ds-toolkit/res/ds-multi-cvd-config-template.json
+index 1d6901c..795460c 100644
+--- a/service/ds-toolkit/res/ds-multi-cvd-config-template.json
++++ b/service/ds-toolkit/res/ds-multi-cvd-config-template.json
+@@ -9,7 +9,7 @@
+         "default_build": "<REPLACE_THIS_BY_REPO_ROOT>/out/target/product/sdv_har_cf"
+       },
+       "boot": {
+-        "extra_bootconfig_args": "androidboot.sdv.instance_name=instance1 androidboot.virt.address=3 androidboot.sdv.boot_mode=unlocked"
++        "extra_bootconfig_args": "androidboot.sdv.instance_name=instance1 androidboot.virt.address=3 androidboot.sdv.boot_mode=unlocked androidboot.sdv.someip.enable=true"
+       },
+       "vm": {
+         "cpus": 4,
+diff --git a/service/product/har_sdv_service_bundle_apex/FakeVehicleDataServiceBundleOrchestration.textproto b/service/product/har_sdv_service_bundle_apex/FakeVehicleDataServiceBundleOrchestration.textproto
+index 5b54621..e6cbb4d 100644
+--- a/service/product/har_sdv_service_bundle_apex/FakeVehicleDataServiceBundleOrchestration.textproto
++++ b/service/product/har_sdv_service_bundle_apex/FakeVehicleDataServiceBundleOrchestration.textproto
+@@ -20,6 +20,6 @@ package_name: "com.sdv.google.display_safety"
+ 
+ state {
+   instances_states {
+-    started: "instance-1"
++        # started: "instance-1"
+   }
+ }
+diff --git a/service/product/har_sdv_service_bundle_apex/acl_configs/har_sdv_service/acl.textproto b/service/product/har_sdv_service_bundle_apex/acl_configs/har_sdv_service/acl.textproto
+index 62b401b..6ca3198 100644
+--- a/service/product/har_sdv_service_bundle_apex/acl_configs/har_sdv_service/acl.textproto
++++ b/service/product/har_sdv_service_bundle_apex/acl_configs/har_sdv_service/acl.textproto
+@@ -35,6 +35,9 @@ subscriber {
+   topic: "com-sdv-google-display-safety-vehicle-speed-max-speed"
+   topic: "com-sdv-google-display-safety-vehicle-speed-speedlimit"
+   topic: "com-sdv-google-display-safety-vehicle-speed-vehicle-speed-ext"
++  topic: "vehicle-speed"
++  topic: "max-speed"
++  topic: "speedlimit"
+ }
+ 
+ subscriber {
+@@ -66,6 +69,7 @@ subscriber {
+   message: "com.sdv.google.display_safety.CurrentGear"
+   topic: "com-sdv-google-display-safety-current-gear-current-gear-ext"
+   topic: "com-sdv-google-display-safety-current-gear-current-gear"
++  topic: "current-gear"
+ }
+ 
+ subscriber {
+diff --git a/service/product/harry_apex/product.mk b/service/product/harry_apex/product.mk
+index b2eca3c..b21ac8a 100644
+--- a/service/product/harry_apex/product.mk
++++ b/service/product/harry_apex/product.mk
+@@ -59,6 +59,7 @@ $(call soong_config_set_string_list, HARRY, HARRY_CONFIG_FILES, ${HARRY_CONFIG_F
+ 
+ # Add SDV Services
+ PRODUCT_PACKAGES += \
++    com.android.sdv.sample.gapb \
+     com.sdv.google.display_safety.services_bundle.apex \
+ 
+ # Add tools/utils
+diff --git a/service/vehicledata/sdv_vehicledata_catalog_v1/vehicledata.proto b/service/vehicledata/sdv_vehicledata_catalog_v1/vehicledata.proto
+index eec53f7..26100e3 100644
+--- a/service/vehicledata/sdv_vehicledata_catalog_v1/vehicledata.proto
++++ b/service/vehicledata/sdv_vehicledata_catalog_v1/vehicledata.proto
+@@ -60,3 +60,5 @@ message EngineRpm {
+     };
+     uint32 rpm = 1;
+ }
++
++

@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: sdv-voltron-demo-sensor
+  namespace: {{ .Values.namespacePrefix }}workflows
+  labels:
+    app.kubernetes.io/name: sdv-voltron-demo-sensor
+    horizon-sdv.io/module: workloads-voltron-demo
+  annotations:
+    argocd.argoproj.io/sync-wave: "9"
+spec:
+  template:
+    serviceAccountName: {{ .Values.workflowDefaults.serviceAccountName | default "workflow-executor" }}
+  dependencies:
+    - name: webhook-dispatch
+      eventSourceName: webhook
+      eventName: voltron-builder
+  triggers:
+    - template:
+        name: sdv-voltron-demo-trigger
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: sdv-voltron-demo-build-
+                namespace: {{ .Values.namespacePrefix }}workflows
+                labels:
+                  horizon-sdv.io/module: workloads-voltron-demo
+              spec:
+                workflowTemplateRef:
+                  name: sdv-voltron-demo-builder

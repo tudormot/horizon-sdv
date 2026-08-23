@@ -1,0 +1,37 @@
+{{- if and .Values.repo.url .Values.repo.revision }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.config.namespacePrefix }}workloads-voltron-demo
+  namespace: {{ .Values.config.namespacePrefix }}argocd
+  labels:
+    app.kubernetes.io/name: workloads-voltron-demo
+    horizon-sdv.io/module: {{ .Values.moduleName }}
+    horizon-sdv.io/app-role: child
+    horizon-sdv.io/module-manager-managed: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: {{ .Values.config.namespacePrefix }}horizon-sdv
+  sources:
+    - repoURL: {{ .Values.repo.url | quote }}
+      targetRevision: {{ .Values.repo.revision | quote }}
+      path: workloads/voltron-demo/pipelines/sdv_voltron_builder/helm
+      helm:
+        values: |
+          namespacePrefix: {{ .Values.config.namespacePrefix | quote }}
+          gcpProjectId: {{ .Values.config.projectID | quote }}
+          gcpProjectNumber: {{ .Values.config.projectNumber | quote }}
+          gcpRegion: {{ .Values.config.region | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.config.namespacePrefix }}workflows
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}

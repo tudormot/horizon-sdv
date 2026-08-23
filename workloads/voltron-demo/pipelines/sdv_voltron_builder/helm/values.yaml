@@ -1,0 +1,13 @@
+namespacePrefix: ""
+
+spec:
+  workstationCluster: "sdv-cluster"
+  builderConfig: "sdv-asfp-carla-builder"
+  testerConfig: "sdv-asfp-carla-snapshot"
+  imageName: "horizon-sdv/sdv-asfp-carla-latest"
+
+workflowDefaults:
+  serviceAccountName: "workflow-executor-elevated"
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+    secondsAfterFailure: 259200

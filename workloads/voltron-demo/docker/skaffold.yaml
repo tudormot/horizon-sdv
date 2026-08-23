@@ -1,0 +1,22 @@
+apiVersion: skaffold/v3
+kind: Config
+metadata:
+  name: sdv-asfp-carla
+requires:
+  # Chained to the base ASfP layer in cicd-foundation directly from public GitHub
+  - git:
+      repo: https://github.com/GoogleCloudPlatform/cicd-foundation.git
+      path: apps/workstations/android-studio-for-platform/skaffold.yaml
+      ref: main
+build:
+  local:
+    useDockerCLI: true
+    push: true
+  artifacts:
+    - image: sdv-asfp-carla-latest
+      context: .
+      docker:
+        dockerfile: Dockerfile
+      requires:
+        - image: android-studio-for-platform
+          alias: BASE_IMAGE
