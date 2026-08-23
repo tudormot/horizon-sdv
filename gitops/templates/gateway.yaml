@@ -19,9 +19,8 @@ metadata:
   namespace: {{ .Values.config.namespacePrefix }}gke-gateway
   annotations:
     argocd.argoproj.io/sync-wave: "1"
-    networking.gke.io/certmap: horizon-sdv-map
 spec:
-  gatewayClassName: gke-l7-global-external-managed
+  gatewayClassName: gke-l7-rilb
   listeners:
   - name: http
     protocol: HTTP
@@ -30,30 +29,4 @@ spec:
       kinds:
       - kind: HTTPRoute
       namespaces:
-        from: Selector
-        selector:
-          matchLabels:
-            otherInfra: httpToHttps
-  - name: https
-    protocol: HTTPS
-    port: 443
-    allowedRoutes:
-      kinds:
-      - kind: HTTPRoute
-      namespaces:
         from: All
----
-apiVersion: networking.gke.io/v1
-kind: GCPGatewayPolicy
-metadata:
-  name: gke-ssl-policy
-  namespace: {{ .Values.config.namespacePrefix }}gke-gateway
-  annotations:
-    argocd.argoproj.io/sync-wave: "2"
-spec:
-  default:
-    sslPolicy: gke-ssl-policy
-  targetRef:
-    group: gateway.networking.k8s.io
-    kind: Gateway
-    name: gke-gateway

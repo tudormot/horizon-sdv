@@ -69,14 +69,14 @@ spec:
           # SSO with Keycloak
           sso:
             enabled: true
-            issuer: https://{{ .Values.config.domain }}/auth/realms/horizon
+            issuer: http://{{ .Values.config.domain }}/auth/realms/horizon
             clientId:
               name: argo-workflows-sso
               key: client-id
             clientSecret:
               name: argo-workflows-sso
               key: client-secret
-            redirectUrl: https://{{ .Values.config.domain }}/workflows/oauth2/callback
+            redirectUrl: http://{{ .Values.config.domain }}/workflows/oauth2/callback
             customGroupClaimName: roles
             scopes:
               - openid
@@ -85,6 +85,11 @@ spec:
               - roles
             rbac:
               enabled: true
+
+          hostAliases:
+            - ip: "10.1.0.25"
+              hostnames:
+                - {{ .Values.config.domain }}
 
           # SSO for humans; client for in-cluster SA bearer (horizon-api → Argo log API).
           # Chart renders extraArgs before authModes; use split so we never end up with duplicate --auth-mode=sso only.

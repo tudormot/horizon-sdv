@@ -71,6 +71,11 @@ config:
       thresholdSeconds: 2592000   # 30 days
       cooldownSeconds: 86400      # 24 hours
 
+  # Gateway Tunnel: In-cluster L4 TCP port forwarder to reach the private GKE Gateway via kubectl
+  gatewayTunnel:
+    enabled: true
+    targetIp: "10.1.0.25"
+
   workloads:
     android:
       helm:

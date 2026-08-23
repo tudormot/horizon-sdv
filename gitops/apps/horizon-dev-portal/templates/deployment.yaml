@@ -34,6 +34,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      hostAliases:
+        - ip: "10.1.0.25"
+          hostnames:
+            - {{ .Values.config.domain | quote }}
       containers:
         - name: horizon-dev-portal
           image: {{ .Values.config.gitops.horizonDevPortal }}

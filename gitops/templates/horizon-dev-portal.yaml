@@ -38,11 +38,11 @@ spec:
             horizonDevPortal: {{ .Values.config.containerImages.horizondevelopmentportal | quote }}
           domain: {{ .Values.config.domain | quote }}
           publicPath: {{ .Values.config.horizonDevelopmentPortal.publicPath | quote }}
-          publicBaseUrl: "https://{{ .Values.config.domain }}"
+          publicBaseUrl: "http://{{ .Values.config.domain }}"
           keycloakRealm: {{ .Values.config.horizonDevelopmentPortal.keycloakRealm | quote }}
           keycloakHttpPathPrefix: {{ .Values.config.horizonDevelopmentPortal.keycloakHttpPathPrefix | quote }}
-          oidcIssuerUrl: "https://{{ .Values.config.domain }}{{ .Values.config.horizonDevelopmentPortal.keycloakHttpPathPrefix }}/realms/{{ .Values.config.horizonDevelopmentPortal.keycloakRealm }}"
-          keycloakTokenUrl: "https://{{ .Values.config.domain }}{{ .Values.config.horizonDevelopmentPortal.keycloakHttpPathPrefix }}/realms/{{ .Values.config.horizonDevelopmentPortal.keycloakRealm }}/protocol/openid-connect/token"
+          oidcIssuerUrl: "http://{{ .Values.config.domain }}{{ .Values.config.horizonDevelopmentPortal.keycloakHttpPathPrefix }}/realms/{{ .Values.config.horizonDevelopmentPortal.keycloakRealm }}"
+          keycloakTokenUrl: "http://{{ .Values.config.domain }}{{ .Values.config.horizonDevelopmentPortal.keycloakHttpPathPrefix }}/realms/{{ .Values.config.horizonDevelopmentPortal.keycloakRealm }}/protocol/openid-connect/token"
           keycloakTokenPath: "{{ .Values.config.horizonDevelopmentPortal.keycloakHttpPathPrefix }}/realms/{{ .Values.config.horizonDevelopmentPortal.keycloakRealm }}/protocol/openid-connect/token"
           keycloakClientId: {{ .Values.config.horizonDevelopmentPortal.keycloakClientId | quote }}
           horizonApiCiClientId: {{ .Values.config.horizonDevelopmentPortal.horizonApiCiClientId | quote }}

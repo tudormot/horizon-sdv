@@ -35,7 +35,7 @@ spec:
             - name: PLATFORM_URL
               value: "http://{{ .Values.config.namespacePrefix }}keycloak-keycloakx-http:8080"
             - name: DOMAIN
-              value: "https://{{ .Values.config.domain }}"
+              value: "http://{{ .Values.config.domain }}"
             - name: HORIZON_DEV_PORTAL_PATH
               value: {{ .Values.config.horizonDevelopmentPortal.publicPath | quote }}
             - name: KEYCLOAK_HTTP_PATH_PREFIX

@@ -28,7 +28,7 @@ spec:
     - kind: Gateway
       name: gke-gateway
       namespace: {{ .Values.config.namespacePrefix }}gke-gateway
-      sectionName: https
+      sectionName: http
   hostnames:
     - {{ .Values.config.domain }}
   rules:

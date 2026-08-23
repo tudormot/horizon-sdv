@@ -26,7 +26,7 @@ spec:
     - kind: Gateway
       name: gke-gateway
       namespace: {{ .Values.config.namespacePrefix }}gke-gateway
-      sectionName: https
+      sectionName: http
   hostnames:
     - {{ printf "mcp.%s" .Values.config.domain | quote }}
   rules:
