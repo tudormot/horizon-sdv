@@ -9,7 +9,7 @@ spec:
   arguments:
     parameters:
       - name: cacheAsfpImage
-        value: "{{ .Values.spec.cacheAsfpImage | default \"true\" }}"
+        value: '{{ .Values.spec.cacheAsfpImage | default "true" }}'
   serviceAccountName: "{{ .Values.workflowDefaults.serviceAccountName }}"
   volumes:
     - name: test-scripts-vol
