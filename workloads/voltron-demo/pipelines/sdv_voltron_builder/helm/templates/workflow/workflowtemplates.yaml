@@ -100,11 +100,11 @@ spec:
         parameters:
           - name: workstationCluster
           - name: builderConfig
-        outputs:
-          parameters:
-            - name: candidateSnapshotName
-              valueFrom:
-                path: /tmp/candidate_snapshot_name
+      outputs:
+        parameters:
+          - name: candidateSnapshotName
+            valueFrom:
+              path: /tmp/candidate_snapshot_name
       container:
         image: google/cloud-sdk:alpine
         command: [sh, -c]
