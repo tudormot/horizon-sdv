@@ -52,10 +52,10 @@ RUN mkdir -p /etc/apt/keyrings && \
       debhelper-compat \
       golang \
       curl \
-      wget && \
-    wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
-    apt-get install -y ./libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
-    rm libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
+      wget \
+      libncurses6 && \
+    (ln -s /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 2>/dev/null || true) && \
+    (ln -s /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 2>/dev/null || true) && \
     git clone https://github.com/google/android-cuttlefish && \
     find /android-cuttlefish -name '*.MODULE.bazel' -o -name 'MODULE.bazel' \
       | xargs sed -i 's|https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-tools|https://github.com/jaegeuk/f2fs-tools|g' && \
