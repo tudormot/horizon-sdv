@@ -227,7 +227,21 @@ spec:
 
             echo "Creating temporary test workstation: ${TEST_WS}..."
             gcloud workstations create "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}"
-            gcloud workstations start "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}"
+
+            echo "Starting test workstation..."
+            STARTED=false
+            for attempt in 1 2 3; do
+              if gcloud workstations start "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}"; then
+                STARTED=true
+                break
+              fi
+              echo "Retrying workstation start in 15s (attempt $attempt/3)..."
+              sleep 15
+            done
+            if [ "$STARTED" != "true" ]; then
+              echo "Failed to start test workstation after 3 attempts."
+              exit 1
+            fi
 
             echo "Running automated verification tests via workstation ssh..."
             gcloud workstations ssh "${TEST_WS}" \
