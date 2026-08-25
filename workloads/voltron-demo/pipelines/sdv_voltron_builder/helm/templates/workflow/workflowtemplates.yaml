@@ -216,23 +216,25 @@ spec:
                 --accelerator-count=1 \
                 --container-custom-image="{{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/{{ .Values.spec.imageName }}" \
                 --pd-disk-type="pd-ssd" \
-                --pd-source-snapshot='{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}'
+                --pd-source-snapshot="projects/${PROJECT}/global/snapshots/{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}"
             
+            cleanup() {
+              echo "Cleaning up test workstation and config..."
+              gcloud workstations delete "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}" --quiet || true
+              gcloud workstations configs delete "${CONFIG}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --quiet || true
+            }
+            trap cleanup EXIT
+
             echo "Creating temporary test workstation: ${TEST_WS}..."
             gcloud workstations create "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}"
             gcloud workstations start "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}"
 
-            echo "Installing python paramiko..."
-            apk add python3 py3-pip
-            pip3 install paramiko --break-system-packages
-
-            echo "Running python automated tests..."
-            export WORKSTATION_FQDN="${TEST_WS}.${CLUSTER}.${REGION}.cloudworkstations.dev"
-            gcloud workstations ssh "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}" --command="apk add python3 py3-pip || true; pip3 install paramiko --break-system-packages || true; python3 -c \"$(cat /scripts/test_artifacts.py)\""
+            echo "Running automated verification tests via workstation ssh..."
+            gcloud workstations ssh "${TEST_WS}" \
+                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}" \
+                --quiet \
+                --command="bash -ic 'echo Testing CARLA... && nohup \${HOME}/Workspace/carla-installation/CarlaUE4.sh -RenderOffScreen -nosound -carla-server -carla-rpc-port=2000 > /tmp/carla.log 2>&1 & sleep 10 && ss -tulpn | grep 2000 && pkill -9 -f CarlaUE4 && echo CARLA OK && echo Testing launch_2vm... && launch_2vm && clear_2vm && echo All tests passed!'"
             
-            echo "Cleaning up test workstation and config..."
-            gcloud workstations delete "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}" --quiet || true
-            gcloud workstations configs delete "${CONFIG}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --quiet || true
             echo "Artifacts verified successfully!"
 
     - name: run-promote-snapshot
