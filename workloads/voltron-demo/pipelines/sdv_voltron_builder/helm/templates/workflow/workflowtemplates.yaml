@@ -160,18 +160,24 @@ spec:
                 --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
                 --config="${CONFIG}" --quiet
             
-            DISK_LINK=$(gcloud workstations describe "${BUILD_WS}" \
-                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
-                --config="${CONFIG}" --format="value(host.gceInstance.pooledInstances[0].rootDisk)")
+            echo "Looking up persistent disk for ${BUILD_WS}..."
+            SHORT_DISK_NAME=$(gcloud compute disks list \
+                --project="${PROJECT}" \
+                --filter="labels.workstation_id=${BUILD_WS}" \
+                --format="value(name)" | head -n 1)
             
-            echo "Extracted PD Link: ${DISK_LINK}"
-            SHORT_DISK_NAME=$(basename "${DISK_LINK}")
+            if [ -z "${SHORT_DISK_NAME}" ]; then
+              echo "Error: Could not find persistent disk for workstation ${BUILD_WS}"
+              exit 1
+            fi
+
+            echo "Found PD: ${SHORT_DISK_NAME}"
             CANDIDATE_SNAP="voltron-pd-snap-{{ "{{" }}workflow.uid{{ "}}" }}"
             
-            echo "Creating snapshot ${CANDIDATE_SNAP} from ${SHORT_DISK_NAME}..."
+            echo "Creating snapshot ${CANDIDATE_SNAP} from regional disk ${SHORT_DISK_NAME}..."
             gcloud compute snapshots create "${CANDIDATE_SNAP}" \
                 --source-disk="${SHORT_DISK_NAME}" \
-                --source-disk-zone="${REGION}-a" \
+                --source-disk-region="${REGION}" \
                 --project="${PROJECT}"
             
             echo "Cleaning up temporary builder workstation..."
