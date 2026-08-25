@@ -214,7 +214,6 @@ spec:
                 --machine-type="n1-standard-16" \
                 --accelerator-type="nvidia-tesla-t4" \
                 --accelerator-count=1 \
-                --replica-zones="europe-west1-b,europe-west1-c" \
                 --container-custom-image="{{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/{{ .Values.spec.imageName }}" \
                 --pd-disk-type="pd-ssd" \
                 --pd-source-snapshot="projects/${PROJECT}/global/snapshots/{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}"
