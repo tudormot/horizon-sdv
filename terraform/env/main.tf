@@ -202,7 +202,9 @@ module "base" {
   sdv_network_egress_router_name = "sdv-egress-internet"
 
   sdv_artifact_registry_repository_id      = "horizon-sdv"
-  sdv_artifact_registry_repository_members = []
+  sdv_artifact_registry_repository_members = [
+    "serviceAccount:gke-argo-workflows-elevated-sa@${var.sdv_gcp_project_id}.iam.gserviceaccount.com",
+  ]
   sdv_artifact_registry_repository_reader_members = [
     "serviceAccount:${var.sdv_gcp_compute_sa_email}",
   ]
