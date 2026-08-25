@@ -61,6 +61,13 @@ spec:
                   value: '{{ "{{" }}tasks.build-snapshot.outputs.parameters.candidateSnapshotName{{ "}}" }}'
 
     - name: run-build-asfp
+      nodeSelector:
+        workloadLabel: "android"
+      tolerations:
+        - key: "workloadType"
+          operator: "Equal"
+          value: "android"
+          effect: "NoSchedule"
       inputs:
         parameters:
           - name: cache
@@ -79,12 +86,20 @@ spec:
           - --destination={{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/android-studio-for-platform:latest
         resources:
           requests:
-            memory: "8Gi"
-            cpu: "2"
+            cpu: "32"
+            memory: "64Gi"
           limits:
-            memory: "12Gi"
+            cpu: "32"
+            memory: "96Gi"
 
     - name: run-build-image
+      nodeSelector:
+        workloadLabel: "android"
+      tolerations:
+        - key: "workloadType"
+          operator: "Equal"
+          value: "android"
+          effect: "NoSchedule"
       inputs:
         artifacts:
           - name: source
@@ -100,6 +115,13 @@ spec:
           - --build-arg=BASE_IMAGE={{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/android-studio-for-platform:latest
           - --cache=true
           - --destination={{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/{{ .Values.spec.imageName }}
+        resources:
+          requests:
+            cpu: "16"
+            memory: "32Gi"
+          limits:
+            cpu: "16"
+            memory: "64Gi"
 
     - name: run-build-snapshot
       inputs:
@@ -183,7 +205,9 @@ spec:
             echo "We need to create the temporary tester config matching the candidate snapshot..."
             gcloud workstations configs create "${CONFIG}" \
                 --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
-                --machine-type="g2-standard-4" \
+                --machine-type="n1-standard-16" \
+                --accelerator-type="nvidia-tesla-t4" \
+                --accelerator-count=1 \
                 --container-custom-image="{{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/{{ .Values.spec.imageName }}" \
                 --pd-disk-type="pd-standard" --pd-disk-size-gb=200 \
                 --pd-source-snapshot='{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}'
