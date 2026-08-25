@@ -209,7 +209,7 @@ spec:
                 --accelerator-type="nvidia-tesla-t4" \
                 --accelerator-count=1 \
                 --container-custom-image="{{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/{{ .Values.spec.imageName }}" \
-                --pd-disk-type="pd-standard" --pd-disk-size-gb=200 \
+                --pd-disk-type="pd-ssd" \
                 --pd-source-snapshot='{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}'
             
             echo "Creating temporary test workstation: ${TEST_WS}..."
