@@ -77,6 +77,12 @@ spec:
           - --dockerfile={{ "{{" }}inputs.artifacts.source.path{{ "}}" }}/workloads/cloud-workstations/pipelines/workstation-images/horizon-asfp/Dockerfile
           - --cache={{ "{{" }}inputs.parameters.cache{{ "}}" }}
           - --destination={{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/android-studio-for-platform:latest
+        resources:
+          requests:
+            memory: "8Gi"
+            cpu: "2"
+          limits:
+            memory: "12Gi"
 
     - name: run-build-image
       inputs:

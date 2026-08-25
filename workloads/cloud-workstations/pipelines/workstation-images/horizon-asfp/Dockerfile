@@ -63,6 +63,7 @@ RUN mkdir -p /etc/apt/keyrings && \
     mkdir out && \
     cp /android-cuttlefish/cuttlefish-base_*_*64.deb /out && \
     cp /android-cuttlefish/cuttlefish-user_*_*64.deb /out && \
+    rm -rf /root/.cache /android-cuttlefish /tmp/* && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
