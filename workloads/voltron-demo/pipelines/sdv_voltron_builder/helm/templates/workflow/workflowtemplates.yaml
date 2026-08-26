@@ -11,10 +11,6 @@ spec:
       - name: cacheAsfpImage
         value: '{{ .Values.spec.cacheAsfpImage | default "true" }}'
   serviceAccountName: "{{ .Values.workflowDefaults.serviceAccountName }}"
-  volumes:
-    - name: test-scripts-vol
-      configMap:
-        name: horizon-workflow-test-scripts
   templates:
     - name: build-pipeline
       dag:
@@ -196,9 +192,6 @@ spec:
       container:
         image: google/cloud-sdk:alpine
         command: [sh, -c]
-        volumeMounts:
-          - name: test-scripts-vol
-            mountPath: /scripts
         args:
           - |
             set -eo pipefail

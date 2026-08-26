@@ -16,6 +16,7 @@
 echo "Welcome to the aaos-sdv dev env!"
 if [ -f /google/sdv-utils/README ]; then
     echo '"cat /google/sdv-utils/README" to get started'
+fi
 
 # fn for launching carla in a standalone terminal
 launch_carla() {
