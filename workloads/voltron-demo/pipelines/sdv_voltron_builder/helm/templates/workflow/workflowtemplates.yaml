@@ -1,0 +1,264 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: sdv-voltron-demo-builder
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  entrypoint: build-pipeline
+  arguments:
+    parameters:
+      - name: cacheAsfpImage
+        value: '{{ .Values.spec.cacheAsfpImage | default "true" }}'
+  serviceAccountName: "{{ .Values.workflowDefaults.serviceAccountName }}"
+  templates:
+    - name: build-pipeline
+      dag:
+        tasks:
+          - name: build-asfp
+            template: run-build-asfp
+            arguments:
+              parameters:
+                - name: cache
+                  value: '{{ "{{" }}workflow.parameters.cacheAsfpImage{{ "}}" }}'
+
+          - name: build-image
+            depends: "build-asfp"
+            template: run-build-image
+
+          - name: build-snapshot
+            depends: "build-image"
+            template: run-build-snapshot
+            arguments:
+              parameters:
+                - name: workstationCluster
+                  value: "{{ .Values.spec.workstationCluster }}"
+                - name: builderConfig
+                  value: "{{ .Values.spec.builderConfig }}"
+
+          - name: test-artifacts
+            depends: "build-snapshot"
+            template: run-test-artifacts
+            arguments:
+              parameters:
+                - name: workstationCluster
+                  value: "{{ .Values.spec.workstationCluster }}"
+                - name: testerConfig
+                  value: 'tester-config-{{ "{{" }}workflow.uid{{ "}}" }}'
+                - name: candidateSnapshotName
+                  value: '{{ "{{" }}tasks.build-snapshot.outputs.parameters.candidateSnapshotName{{ "}}" }}'
+
+          - name: promote-snapshot
+            depends: "test-artifacts"
+            template: run-promote-snapshot
+            arguments:
+              parameters:
+                - name: candidateSnapshotName
+                  value: '{{ "{{" }}tasks.build-snapshot.outputs.parameters.candidateSnapshotName{{ "}}" }}'
+
+    - name: run-build-asfp
+      nodeSelector:
+        workloadLabel: "android"
+      tolerations:
+        - key: "workloadType"
+          operator: "Equal"
+          value: "android"
+          effect: "NoSchedule"
+      inputs:
+        parameters:
+          - name: cache
+        artifacts:
+          - name: source
+            path: /src
+            git:
+              repo: "https://github.com/tudormot/horizon-sdv.git"
+              depth: 1
+      container:
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+          - --context={{ "{{" }}inputs.artifacts.source.path{{ "}}" }}/workloads/cloud-workstations/pipelines/workstation-images/horizon-asfp
+          - --dockerfile={{ "{{" }}inputs.artifacts.source.path{{ "}}" }}/workloads/cloud-workstations/pipelines/workstation-images/horizon-asfp/Dockerfile
+          - --cache={{ "{{" }}inputs.parameters.cache{{ "}}" }}
+          - --destination={{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/android-studio-for-platform:latest
+        resources:
+          requests:
+            cpu: "32"
+            memory: "64Gi"
+          limits:
+            cpu: "32"
+            memory: "96Gi"
+
+    - name: run-build-image
+      nodeSelector:
+        workloadLabel: "android"
+      tolerations:
+        - key: "workloadType"
+          operator: "Equal"
+          value: "android"
+          effect: "NoSchedule"
+      inputs:
+        artifacts:
+          - name: source
+            path: /src
+            git:
+              repo: "https://github.com/tudormot/horizon-sdv.git"
+              depth: 1
+      container:
+        image: gcr.io/kaniko-project/executor:latest
+        args:
+          - --context={{ "{{" }}inputs.artifacts.source.path{{ "}}" }}/workloads/voltron-demo/docker
+          - --dockerfile={{ "{{" }}inputs.artifacts.source.path{{ "}}" }}/workloads/voltron-demo/docker/Dockerfile
+          - --build-arg=BASE_IMAGE={{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/android-studio-for-platform:latest
+          - --cache=true
+          - --destination={{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/{{ .Values.spec.imageName }}
+        resources:
+          requests:
+            cpu: "16"
+            memory: "32Gi"
+          limits:
+            cpu: "16"
+            memory: "64Gi"
+
+    - name: run-build-snapshot
+      inputs:
+        parameters:
+          - name: workstationCluster
+          - name: builderConfig
+      outputs:
+        parameters:
+          - name: candidateSnapshotName
+            valueFrom:
+              path: /tmp/candidate_snapshot_name
+      container:
+        image: google/cloud-sdk:alpine
+        command: [sh, -c]
+        args:
+          - |
+            set -eo pipefail
+            PROJECT="{{ .Values.gcpProjectId }}"
+            REGION="{{ .Values.gcpRegion }}"
+            CLUSTER='{{ "{{" }}inputs.parameters.workstationCluster{{ "}}" }}'
+            CONFIG='{{ "{{" }}inputs.parameters.builderConfig{{ "}}" }}'
+            BUILD_WS="voltron-builder-{{ "{{" }}workflow.uid{{ "}}" }}"
+            
+            echo "Creating temporary builder workstation: ${BUILD_WS}..."
+            gcloud workstations create "${BUILD_WS}" \
+                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
+                --config="${CONFIG}"
+            
+            echo "Starting builder workstation..."
+            gcloud workstations start "${BUILD_WS}" \
+                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
+                --config="${CONFIG}"
+            
+            echo "Stopping builder to snapshot its persistent disk..."
+            gcloud workstations stop "${BUILD_WS}" \
+                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
+                --config="${CONFIG}" --quiet
+            
+            echo "Looking up persistent disk for ${BUILD_WS}..."
+            SHORT_DISK_NAME=$(gcloud compute disks list \
+                --project="${PROJECT}" \
+                --filter="labels.workstation_id=${BUILD_WS}" \
+                --format="value(name)" | head -n 1)
+            
+            if [ -z "${SHORT_DISK_NAME}" ]; then
+              echo "Error: Could not find persistent disk for workstation ${BUILD_WS}"
+              exit 1
+            fi
+
+            echo "Found PD: ${SHORT_DISK_NAME}"
+            CANDIDATE_SNAP="voltron-pd-snap-{{ "{{" }}workflow.uid{{ "}}" }}"
+            
+            echo "Creating snapshot ${CANDIDATE_SNAP} from regional disk ${SHORT_DISK_NAME}..."
+            gcloud compute snapshots create "${CANDIDATE_SNAP}" \
+                --source-disk="${SHORT_DISK_NAME}" \
+                --source-disk-region="${REGION}" \
+                --project="${PROJECT}"
+            
+            echo "Cleaning up temporary builder workstation..."
+            gcloud workstations delete "${BUILD_WS}" \
+                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
+                --config="${CONFIG}" --quiet || true
+            
+            echo -n "${CANDIDATE_SNAP}" > /tmp/candidate_snapshot_name
+
+    - name: run-test-artifacts
+      inputs:
+        parameters:
+          - name: workstationCluster
+          - name: testerConfig
+          - name: candidateSnapshotName
+      container:
+        image: google/cloud-sdk:alpine
+        command: [sh, -c]
+        args:
+          - |
+            set -eo pipefail
+            PROJECT="{{ .Values.gcpProjectId }}"
+            REGION="{{ .Values.gcpRegion }}"
+            CLUSTER='{{ "{{" }}inputs.parameters.workstationCluster{{ "}}" }}'
+            CONFIG='{{ "{{" }}inputs.parameters.testerConfig{{ "}}" }}'
+            TEST_WS="voltron-tester-{{ "{{" }}workflow.uid{{ "}}" }}"
+            
+            echo "We need to create the temporary tester config matching the candidate snapshot..."
+            gcloud workstations configs create "${CONFIG}" \
+                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" \
+                --machine-type="n1-standard-16" \
+                --accelerator-type="nvidia-tesla-t4" \
+                --accelerator-count=1 \
+                --container-custom-image="{{ .Values.gcpRegion }}-docker.pkg.dev/{{ .Values.gcpProjectId }}/horizon-sdv/{{ .Values.spec.imageName }}" \
+                --pd-disk-type="pd-ssd" \
+                --pd-source-snapshot="projects/${PROJECT}/global/snapshots/{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}"
+            
+            cleanup() {
+              echo "Cleaning up test workstation and config..."
+              gcloud workstations delete "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}" --quiet || true
+              gcloud workstations configs delete "${CONFIG}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --quiet || true
+            }
+            trap cleanup EXIT
+
+            echo "Creating temporary test workstation: ${TEST_WS}..."
+            gcloud workstations create "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}"
+
+            echo "Starting test workstation..."
+            STARTED=false
+            for attempt in 1 2 3; do
+              if gcloud workstations start "${TEST_WS}" --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}"; then
+                STARTED=true
+                break
+              fi
+              echo "Retrying workstation start in 15s (attempt $attempt/3)..."
+              sleep 15
+            done
+            if [ "$STARTED" != "true" ]; then
+              echo "Failed to start test workstation after 3 attempts."
+              exit 1
+            fi
+
+            echo "Running automated verification tests via workstation ssh..."
+            gcloud workstations ssh "${TEST_WS}" \
+                --project="${PROJECT}" --region="${REGION}" --cluster="${CLUSTER}" --config="${CONFIG}" \
+                --quiet \
+                --command="bash -ic 'echo Testing CARLA... && nohup \${HOME}/Workspace/carla-installation/CarlaUE4.sh -RenderOffScreen -nosound -carla-server -carla-rpc-port=2000 > /tmp/carla.log 2>&1 & sleep 10 && ss -tulpn | grep 2000 && pkill -9 -f CarlaUE4 && echo CARLA OK && echo Testing launch_2vm... && launch_2vm && clear_2vm && echo All tests passed!'"
+            
+            echo "Artifacts verified successfully!"
+
+    - name: run-promote-snapshot
+      inputs:
+        parameters:
+          - name: candidateSnapshotName
+      container:
+        image: google/cloud-sdk:alpine
+        command: [sh, -c]
+        args:
+          - |
+            set -eo pipefail
+            PROJECT="{{ .Values.gcpProjectId }}"
+            CANDIDATE_SNAP='{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}'
+            
+            OLD_LATEST=$(gcloud compute snapshots list --project="${PROJECT}" --filter="labels.is-latest=true" --format="value(name)" 2>/dev/null || true)
+            for old_snap in ${OLD_LATEST}; do
+              gcloud compute snapshots remove-labels "${old_snap}" --labels="is-latest" --project="${PROJECT}" 2>/dev/null || true
+            done
+            gcloud compute snapshots add-labels "${CANDIDATE_SNAP}" --labels="is-latest=true,env=production" --project="${PROJECT}"

@@ -52,10 +52,10 @@ RUN mkdir -p /etc/apt/keyrings && \
       debhelper-compat \
       golang \
       curl \
-      wget && \
-    wget http://security.ubuntu.com/ubuntu/pool/universe/n/ncurses/libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
-    apt-get install -y ./libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
-    rm libtinfo5_6.3-2ubuntu0.1_amd64.deb && \
+      wget \
+      libncurses6 && \
+    (ln -s /usr/lib/x86_64-linux-gnu/libncurses.so.6 /usr/lib/x86_64-linux-gnu/libncurses.so.5 2>/dev/null || true) && \
+    (ln -s /usr/lib/x86_64-linux-gnu/libtinfo.so.6 /usr/lib/x86_64-linux-gnu/libtinfo.so.5 2>/dev/null || true) && \
     git clone https://github.com/google/android-cuttlefish && \
     find /android-cuttlefish -name '*.MODULE.bazel' -o -name 'MODULE.bazel' \
       | xargs sed -i 's|https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-tools|https://github.com/jaegeuk/f2fs-tools|g' && \
@@ -63,6 +63,7 @@ RUN mkdir -p /etc/apt/keyrings && \
     mkdir out && \
     cp /android-cuttlefish/cuttlefish-base_*_*64.deb /out && \
     cp /android-cuttlefish/cuttlefish-user_*_*64.deb /out && \
+    rm -rf /root/.cache /android-cuttlefish /tmp/* && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -225,9 +226,5 @@ RUN ln -s /etc/systemd/system/tigervnc.service /etc/systemd/system/multi-user.ta
       sed -i 's/android-studio-for-platform/android-studio-for-platform-canary/g' /usr/share/applications/jetbrains-studio.desktop; \
     fi && \
     chmod +x /google/scripts/entrypoint.sh
-
-# Configure gemini-mcp-agent script
-COPY --chmod=755 ./common-utils/gemini/gemini-mcp-agent.py /usr/local/bin/gemini-mcp-agent
-RUN sed -i 's/^\(HORIZON_DOMAIN = os.environ.get("HORIZON_DOMAIN", "\)##DOMAIN##\(")\)/\1'"${HORIZON_DOMAIN}"'\2/' /usr/local/bin/gemini-mcp-agent
 
 ENTRYPOINT ["/google/scripts/entrypoint.sh"]

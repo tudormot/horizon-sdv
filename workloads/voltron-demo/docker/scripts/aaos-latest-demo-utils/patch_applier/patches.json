@@ -1,0 +1,22 @@
+[
+  {
+    "patch_filename": "patches/device_google_sdv.patch",
+    "repo_path": "device/google/sdv",
+    "expected_base_commit": "f4bfa128d5d9fb21adca8430694cc16c90b6144a"
+  },
+  {
+    "patch_filename": "patches/packages_services_display_safety.patch",
+    "repo_path": "packages/services/display_safety",
+    "expected_base_commit": "951af0fd68b691a69bab68542c981291ad4cf1c3"
+  },
+  {
+    "patch_filename": "patches/system_software_defined_vehicle_vsidl.patch",
+    "repo_path": "system/software_defined_vehicle/vsidl",
+    "expected_base_commit": "9d6bfa55d7448844c36af7c5aeadb3e981b6c995"
+  },
+  {
+    "patch_filename": "patches/system_software_defined_vehicle_samples.patch",
+    "repo_path": "system/software_defined_vehicle/samples",
+    "expected_base_commit": "e8cc5f41337edab1e7008729eb3f9442b864404b"
+  }
+]

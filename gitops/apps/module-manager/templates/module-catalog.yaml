@@ -62,3 +62,8 @@ spec:
       overviewServiceNamespace: {{ .Values.namespace | quote }}
       hardDependencies:
         - workloads-common
+    - name: workloads-voltron-demo
+      path: gitops/modules/workloads-voltron-demo
+      overviewPath: portal/overview.html
+      overviewService: mod-workloads-voltron-demo-overview
+      overviewServiceNamespace: {{ .Values.namespace | quote }}

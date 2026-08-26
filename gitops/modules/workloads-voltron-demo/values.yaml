@@ -1,0 +1,17 @@
+moduleName: ""
+
+moduleManagerNamespace: module-manager
+
+argocd:
+  namespace: argocd
+  project: horizon-sdv
+
+repo:
+  url: ""
+  revision: HEAD
+
+config: {}
+
+overviewServiceName: mod-workloads-voltron-demo-overview
+
+softFeaturesEnabled: {}

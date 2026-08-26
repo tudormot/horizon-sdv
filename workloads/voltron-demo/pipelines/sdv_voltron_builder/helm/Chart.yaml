@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sdv-voltron-builder
+description: Argo WorkflowTemplate and Event Sensor for SDV Voltron Demo artifacts
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
