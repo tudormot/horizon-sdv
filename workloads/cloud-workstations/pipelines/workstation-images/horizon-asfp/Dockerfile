@@ -227,8 +227,4 @@ RUN ln -s /etc/systemd/system/tigervnc.service /etc/systemd/system/multi-user.ta
     fi && \
     chmod +x /google/scripts/entrypoint.sh
 
-# Configure gemini-mcp-agent script
-COPY --chmod=755 ./common-utils/gemini/gemini-mcp-agent.py /usr/local/bin/gemini-mcp-agent
-RUN sed -i 's/^\(HORIZON_DOMAIN = os.environ.get("HORIZON_DOMAIN", "\)##DOMAIN##\(")\)/\1'"${HORIZON_DOMAIN}"'\2/' /usr/local/bin/gemini-mcp-agent
-
 ENTRYPOINT ["/google/scripts/entrypoint.sh"]
