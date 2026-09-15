@@ -1,0 +1,140 @@
+<!--
+Copyright (c) 2026 Accenture, All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# voltron-demo
+
+Builds, snapshots and validates the **SDV Voltron Demo** Cloud Workstation image:
+Android Studio for Platform (ASfP) plus CARLA 0.9.15, a SOME/IP bridge and AAOS
+demo utilities.
+
+The Dockerfile and every asset it copies live in the internal Git-on-Borg
+repository [`sdv-demos`](https://sdv.googlesource.com/experimental/sdv-demos) and
+are cloned at run time. Nothing is vendored in this repository.
+
+## Layout
+
+```text
+gitops/modules/voltron-demo/
+├── Chart.yaml
+├── values.yaml                               # Module Manager injection schema
+├── portal/overview.html                      # Developer Portal page
+├── templates/
+│   ├── module-overview-http.yaml
+│   └── application-argo-workflows.yaml       # child Argo CD Application
+└── argo-workflows/
+    ├── Chart.yaml
+    ├── values.yaml                           # all deploy-time configuration
+    └── templates/
+        ├── _helpers.tpl
+        ├── workflowtemplates.yaml            # voltron-demo-init + voltron-demo-execute
+        └── sensors.yaml
+```
+
+## Pipelines
+
+### `voltron-demo-init`
+
+Preflight. Validates the supplied credentials against `sdv-demos`, confirms the
+configured revision exists, and asserts the Dockerfile is at the repository root.
+Run this first: it fails in seconds where the build would fail after tens of
+minutes.
+
+### `voltron-demo-execute`
+
+| # | Task | What it does |
+|---|------|--------------|
+| 1 | `prepare-gob-git-creds` | Converts the supplied gitcookies into a per-run `{{workflow.uid}}-sdv-demos-git-creds` Secret. |
+| 2 | `build-image` | Delegates to the shared `common-docker-image-build` ClusterWorkflowTemplate to build and push the image. |
+| 3 | `build-snapshot` | Provisions a builder workstation, then snapshots its persistent disk. |
+| 4 | `test-artifacts` | Boots a GPU test workstation from the snapshot and verifies CARLA RPC and `launch_2vm`. |
+| 5 | `promote-snapshot` | Moves the `is-latest=true` label onto the validated snapshot. |
+
+An `onExit` handler deletes the credentials Secret whatever the outcome.
+
+## Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `horizonSubmittedFrom` | no | Populated by the Developer Portal / Horizon CLI. Leave empty. |
+| `gobGitcookiesB64` | **yes** | Base64 of your raw `~/.gitcookies`, single line. |
+
+Everything else — repository URL and revision, image names, workstation cluster
+and builder config — is deploy-time configuration in
+[`argo-workflows/values.yaml`](argo-workflows/values.yaml), not a submit-time
+parameter.
+
+> [!IMPORTANT]
+> Parameters are mapped **positionally** by the Sensors
+> (`spec.arguments.parameters.N.value`). If you add, remove or reorder a
+> parameter in `workflowtemplates.yaml`, you must update `sensors.yaml` to match.
+
+### Supplying credentials
+
+`sdv-demos` is not public, so every run needs your personal Git-on-Borg cookie:
+
+```bash
+base64 -w0 ~/.gitcookies
+```
+
+Paste the output into `gobGitcookiesB64`.
+
+This mirrors the existing precedent in
+`workloads/android/pipelines/builds/aaos_sdv_builder`, which takes
+`GERRIT_GITCOOKIES_BASE64` as a per-run, non-stored parameter. Short-lived
+personal credentials are deliberately **not** stored in Secret Manager; that tier
+is reserved for long-lived platform-owned credentials.
+
+> [!CAUTION]
+> Git-on-Borg cookies expire after roughly 20 hours — supply a fresh value each
+> run. Argo has no masked-parameter mechanism, so the value is persisted in the
+> Workflow CR and is readable by anyone with read access to workflows in this
+> namespace. The pipeline never logs the value itself, only its SHA-256 digest.
+
+## Images
+
+| Role | Image |
+|------|-------|
+| Base, consumed read-only | `<region>-docker.pkg.dev/<project>/horizon-sdv/android-studio-for-platform:latest` |
+| Produced by this module | `<region>-docker.pkg.dev/<project>/horizon-sdv/voltron-demo:latest` |
+
+> [!NOTE]
+> The ASfP base image is built and published by the separate `horizon-asfp`
+> workstation-image pipeline. This module must never write that tag; doing so
+> would silently replace the platform's base image.
+
+## Dependencies
+
+Hard dependency on **`workloads-common`**, which publishes the
+`common-docker-image-build` ClusterWorkflowTemplate.
+
+That template derives its build context from the Dockerfile directory, which is
+why `sdv-demos` keeps its Dockerfile at the repository root. It runs buildkit, so
+the `# syntax=docker/dockerfile:1.4` directive and the `COPY --chmod=` flags used
+throughout that Dockerfile are honoured — Kaniko would not honour them reliably.
+
+## Verifying changes
+
+```bash
+helm lint gitops/modules/voltron-demo
+helm lint gitops/modules/voltron-demo/argo-workflows
+helm template voltron gitops/modules/voltron-demo/argo-workflows \
+  --set parentModuleName=voltron-demo \
+  --set gcpProjectId=<project> --set gcpRegion=<region>
+
+kubectl get modulecatalog cluster -n module-manager -o yaml
+horizon catalog get
+horizon workflow submit --module voltron-demo --template voltron-demo-init --output json
+```
