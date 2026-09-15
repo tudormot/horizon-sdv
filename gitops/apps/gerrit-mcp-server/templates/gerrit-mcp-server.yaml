@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-{{- $gerrit_external_url := .Values.server.config.external_url | replace "##DOMAIN##" .Values.config.gitops.domain }}
+{{- $gerrit_external_url := .Values.server.config.external_url | replace "##DOMAIN##" .Values.config.gitops.domain | replace "##SCHEME##" .Values.config.gitops.scheme }}
 
 apiVersion: v1
 kind: ConfigMap

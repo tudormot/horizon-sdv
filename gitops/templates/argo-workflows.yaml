@@ -69,14 +69,14 @@ spec:
           # SSO with Keycloak
           sso:
             enabled: true
-            issuer: https://{{ .Values.config.domain }}/auth/realms/horizon
+            issuer: {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/auth/realms/horizon
             clientId:
               name: argo-workflows-sso
               key: client-id
             clientSecret:
               name: argo-workflows-sso
               key: client-secret
-            redirectUrl: https://{{ .Values.config.domain }}/workflows/oauth2/callback
+            redirectUrl: {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/workflows/oauth2/callback
             customGroupClaimName: roles
             scopes:
               - openid

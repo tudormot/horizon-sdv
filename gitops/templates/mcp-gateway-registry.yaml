@@ -40,7 +40,7 @@ spec:
         externalUrls:
           registry: "https://mcp.{{ .Values.config.domain }}"
           authServer: "https://mcp.{{ .Values.config.domain }}/auth-server"
-          keycloak: "https://{{ .Values.config.domain }}/auth"
+          keycloak: "{{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/auth"
         spec:
           source:
             repoURL: {{ .Values.spec.source.repoURL }}

@@ -31,7 +31,7 @@ configs:
   cm:
     # Must match server.rootpath (/argocd) and the public Gateway prefix or Keycloak rejects
     # redirect_uri (OAuth callback must be under this URL).
-    url: https://${subdomain_name}.${domain_name}/argocd
+    url: ${scheme}://${subdomain_name}.${domain_name}/argocd
     resource.customizations: |
       Secret:
         ignoreDifferences: |

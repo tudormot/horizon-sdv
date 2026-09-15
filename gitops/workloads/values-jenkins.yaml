@@ -13,6 +13,10 @@
 # limitations under the License.
 
 config:
+  # Overridden by the parent Application (gitops/templates/jenkins.yaml). The default
+  # matches the standard public deployment.
+  ingress:
+    scheme: https
   workloads:
     android:
       cuttlefish:
@@ -596,7 +600,7 @@ controller:
                     - verdictDescription: "Ready for Build"
                       verdictValue: "Ready-for-Build"
                   gerritAuthKeyFile: "/run/secrets/additional/jenkins-gerrit-ssh-private-key-privateKey"
-                  gerritFrontEndUrl: "https://{{ .Values.config.domain }}/gerrit/"
+                  gerritFrontEndUrl: "{{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/gerrit/"
                   gerritHostName: "gerrit-service.{{ .Values.config.namespacePrefix }}gerrit.svc.cluster.local"
                   gerritSshPort: 29418
                   gerritUserName: "gerrit-admin"

@@ -95,6 +95,10 @@ spec:
         config:
           domain: {{ .Values.config.domain }}
           namespacePrefix: {{ .Values.config.namespacePrefix }}
+          ingress:
+            # Needed for gerrit.config canonicalWebUrl; this Application renders the
+            # gitops/apps/gerrit chart separately, so it does not inherit config.ingress.
+            scheme: {{ .Values.config.ingress.scheme }}
         spec:
           source:
             repoURL: {{ .Values.spec.source.repoURL }}

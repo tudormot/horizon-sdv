@@ -91,3 +91,66 @@ module "vpc" {
     }
   ]
 }
+
+# ---------------------------------------------------------------------------
+# Internal ingress infrastructure (gateway_internal = true)
+#
+# Created only when the platform is served by a regional internal Application
+# Load Balancer, i.e. in projects where organization policy forbids external
+# load balancers (constraints/compute.restrictLoadBalancerCreationForTypes).
+# ---------------------------------------------------------------------------
+
+# Managed Envoy proxies of the regional internal ALB are allocated from this
+# subnet. Without it the Gateway is created but never programmed.
+resource "google_compute_subnetwork" "gateway_proxy_only" {
+  count = var.gateway_internal ? 1 : 0
+
+  name          = var.gateway_proxy_subnet_name
+  project       = data.google_project.project.project_id
+  region        = var.region
+  network       = module.vpc.network_id
+  ip_cidr_range = var.gateway_proxy_subnet_cidr
+  purpose       = "REGIONAL_MANAGED_PROXY"
+  role          = "ACTIVE"
+}
+
+# Reserving the VIP keeps the address stable across Gateway recreation, so the
+# DNS records below never go stale.
+resource "google_compute_address" "gateway_internal" {
+  count = var.gateway_internal ? 1 : 0
+
+  name         = var.gateway_address_name
+  project      = data.google_project.project.project_id
+  region       = var.region
+  subnetwork   = module.vpc.subnets["${var.region}/${var.subnetwork}"].self_link
+  address_type = "INTERNAL"
+  purpose      = "SHARED_LOADBALANCER_VIP"
+}
+
+# Private zone: the platform domain is not publicly delegated in this mode, but
+# in-cluster clients must still resolve it (Keycloak issuer, OAuth callbacks).
+resource "google_dns_managed_zone" "gateway_internal" {
+  count = var.gateway_internal ? 1 : 0
+
+  name        = var.gateway_dns_zone_name
+  dns_name    = "${var.gateway_dns_domain}."
+  description = "Resolves the Horizon SDV domain to the internal Gateway VIP inside the VPC."
+  visibility  = "private"
+
+  private_visibility_config {
+    networks {
+      network_url = module.vpc.network_id
+    }
+  }
+}
+
+resource "google_dns_record_set" "gateway_internal" {
+  for_each = var.gateway_internal ? toset(var.gateway_dns_hostnames) : toset([])
+
+  project      = data.google_project.project.project_id
+  managed_zone = google_dns_managed_zone.gateway_internal[0].name
+  name         = "${each.value}."
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [google_compute_address.gateway_internal[0].address]
+}

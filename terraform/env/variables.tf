@@ -336,3 +336,29 @@ variable "sdv_enable_kms_encryption" {
   type        = bool
   default     = false
 }
+
+variable "sdv_gateway_internal" {
+  description = <<-EOT
+    Expose the platform through a regional internal Application Load Balancer
+    (gke-l7-rilb) instead of the default global external one. Set this to true in
+    projects where organization policy forbids external load balancers
+    (constraints/compute.restrictLoadBalancerCreationForTypes).
+
+    Terraform then also creates the REGIONAL_MANAGED_PROXY subnet, a reserved
+    internal VIP and a private Cloud DNS zone resolving the platform domain to
+    that VIP, and skips the Google-managed certificate (which could not be
+    validated without public DNS).
+
+    Consequences: the platform is reachable only from inside the VPC and is served
+    over HTTP, so Google identity brokering and inbound SCM webhooks do not work.
+    Requires sdv_dns_use_static_a_records = true.
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "sdv_gateway_dev_access" {
+  description = "Deploy the optional in-cluster relay that makes the internal Gateway VIP reachable with kubectl port-forward (tools/scripts/deployment/dev-access.sh). Ignored unless sdv_gateway_internal is true."
+  type        = bool
+  default     = false
+}

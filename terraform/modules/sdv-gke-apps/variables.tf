@@ -182,3 +182,27 @@ variable "primary_subnetwork" {
   type        = string
   default     = "sdv-subnet"
 }
+
+variable "ingress_internal" {
+  description = "Platform is served by a regional internal Application Load Balancer; selects the Gateway class, the HTTPRoute listener and the http scheme for all platform URLs."
+  type        = bool
+  default     = false
+}
+
+variable "ingress_address_name" {
+  description = "Name of the reserved internal Gateway address (internal ingress only; empty lets GKE allocate one). The GKE Gateway resolves the VIP by name, not by IP."
+  type        = string
+  default     = ""
+}
+
+variable "ingress_address" {
+  description = "IP of the reserved internal Gateway VIP (internal ingress only). Used as the target of the optional dev-access relay, not by the Gateway itself."
+  type        = string
+  default     = ""
+}
+
+variable "ingress_dev_access" {
+  description = "Deploy the optional in-cluster relay used to reach the internal Gateway via kubectl port-forward."
+  type        = bool
+  default     = false
+}

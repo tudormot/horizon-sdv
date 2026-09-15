@@ -93,7 +93,7 @@ spec:
         configFiles:
           gerrit.config: |-
             [gerrit]
-              canonicalWebUrl = https://{{ .Values.config.domain }}/gerrit/
+              canonicalWebUrl = {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/gerrit/
             [core]
               packedGitLimit = 1g
               packedGitWindowSize = 8k
@@ -107,7 +107,9 @@ spec:
               gitOAuthProvider = gerrit-oauth-provider:keycloak-oauth
               trustedOpenID=^.*$
             [httpd]
-              listenUrl = proxy-https://*:8080/gerrit/
+              # proxy-https/proxy-http must match the scheme the load balancer serves:
+              # it controls the redirects and Secure cookie flags Gerrit emits.
+              listenUrl = proxy-{{ .Values.config.ingress.scheme }}://*:8080/gerrit/
               requestLog = true
               maxThreads = 25
             [user]
@@ -117,7 +119,7 @@ spec:
             [container]
               heapLimit = 4g
             [plugin "gerrit-oauth-provider-keycloak-oauth"]
-              root-url = https://{{ .Values.config.domain }}
+              root-url = {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}
               realm = "horizon"
               client-id = "gerrit"
             [pack]

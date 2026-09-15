@@ -50,9 +50,9 @@ module "sdv_wi" {
   wi_service_accounts = var.sdv_wi_service_accounts
   project_id          = data.google_project.project.project_id
 
-  depends_on = [ 
+  depends_on = [
     module.sdv_gke_cluster
-   ]
+  ]
 }
 
 module "sdv_gcs" {
@@ -80,19 +80,26 @@ module "sdv_gcs_argo_workflows" {
 module "sdv_network" {
   source = "../sdv-network"
 
-  network              = var.sdv_network
-  subnetwork           = var.sdv_subnetwork
-  region               = var.sdv_region
-  router_name          = var.sdv_network_egress_router_name
-  pods_range           = var.pods_range
-  services_range       = var.services_range
-  enable_arm64_dedicated_subnet         = var.enable_arm64_dedicated_subnet
-  arm64_region         = var.arm64_region
+  network                             = var.sdv_network
+  subnetwork                          = var.sdv_subnetwork
+  region                              = var.sdv_region
+  router_name                         = var.sdv_network_egress_router_name
+  pods_range                          = var.pods_range
+  services_range                      = var.services_range
+  enable_arm64_dedicated_subnet       = var.enable_arm64_dedicated_subnet
+  arm64_region                        = var.arm64_region
   arm64_subnetwork                    = var.arm64_subnetwork
   arm64_pods_range                    = var.arm64_pods_range
   arm64_services_range                = var.arm64_services_range
   arm64_pods_secondary_range_name     = var.arm64_pods_secondary_range_name
   arm64_services_secondary_range_name = var.arm64_services_secondary_range_name
+
+  # Internal ingress: proxy-only subnet, reserved VIP and private DNS zone. The
+  # hostnames mirror the SANs of the public certificate used in external mode, so
+  # main, sub-environments and their mcp subdomains all resolve inside the VPC.
+  gateway_internal      = var.sdv_gateway_internal
+  gateway_dns_domain    = var.domain_name
+  gateway_dns_hostnames = var.sdv_gateway_internal ? flatten([for d in values(local.cert_domains) : [d, "mcp.${d}"]]) : []
 }
 
 module "sdv_artifact_registry" {
@@ -240,6 +247,13 @@ module "sdv_gke_apps" {
 
   use_static_dns_a_records = var.sdv_dns_use_static_a_records
 
+  # Internal ingress: drives the Gateway class, the listener that HTTPRoutes bind
+  # to and the scheme of every platform URL (see gitops/values.yaml config.ingress).
+  ingress_internal     = var.sdv_gateway_internal
+  ingress_address_name = module.sdv_network.gateway_internal_address_name
+  ingress_address      = module.sdv_network.gateway_internal_address
+  ingress_dev_access   = var.sdv_gateway_dev_access
+
   images = {
     for name, image in local.images : name => {
       directory = image.directory
@@ -247,15 +261,19 @@ module "sdv_gke_apps" {
     }
   }
 
-  enable_arm64_dedicated_subnet       = var.enable_arm64_dedicated_subnet
-  arm64_region       = var.arm64_region
-  arm64_zone         = var.arm64_zone
-  arm64_subnetwork   = var.arm64_subnetwork
-  primary_subnetwork = var.sdv_subnetwork
+  enable_arm64_dedicated_subnet = var.enable_arm64_dedicated_subnet
+  arm64_region                  = var.arm64_region
+  arm64_zone                    = var.arm64_zone
+  arm64_subnetwork              = var.arm64_subnetwork
+  primary_subnetwork            = var.sdv_subnetwork
 }
 
+# TLS is terminated by the external Application Load Balancer. In internal mode
+# there is no external load balancer and the platform domain is not publicly
+# delegated, so a Google-managed certificate could never complete validation.
 module "sdv_certificate_manager" {
   source = "../sdv-certificate-manager"
+  count  = var.sdv_gateway_internal ? 0 : 1
 
   name    = var.sdv_ssl_certificate_name
   domains = local.cert_domains
@@ -268,13 +286,14 @@ module "sdv_certificate_manager" {
 }
 
 # Only create Cloud DNS zone when not using static A records (zone delegation flow).
+# In internal mode the equivalent private zone is created by the network module.
 module "sdv_dns_zone" {
   source = "../sdv-dns-zone"
-  count  = var.sdv_dns_use_static_a_records ? 0 : 1
+  count  = (var.sdv_dns_use_static_a_records || var.sdv_gateway_internal) ? 0 : 1
 
   zone_name        = "${var.env_name}-${var.sdv_ssl_certificate_name}-com"
   dns_name         = "${var.env_name}.${var.domain_name}."
-  dns_auth_records = module.sdv_certificate_manager.dns_auth_records
+  dns_auth_records = module.sdv_certificate_manager[0].dns_auth_records
   dnssec_enabled   = var.sdv_dns_dnssec_enabled
 
   depends_on = [
@@ -498,9 +517,9 @@ resource "google_compute_firewall" "allow_internal_egress" {
   }
 
   destination_ranges = concat(
-    ["10.0.0.0/8"],                                 # Internal VPC ranges
-    [var.pods_range],                               # GKE pods range
-    [var.services_range],                           # GKE services range
+    ["10.0.0.0/8"],                                                  # Internal VPC ranges
+    [var.pods_range],                                                # GKE pods range
+    [var.services_range],                                            # GKE services range
     var.enable_arm64_dedicated_subnet ? [var.arm64_pods_range] : [], # ARM64 pods range if enabled
     var.enable_arm64_dedicated_subnet ? [var.arm64_services_range] : []
   )

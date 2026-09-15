@@ -19,8 +19,36 @@ metadata:
   namespace: {{ .Values.config.namespacePrefix }}gke-gateway
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+    {{- if not .Values.config.ingress.internal }}
     networking.gke.io/certmap: horizon-sdv-map
+    {{- end }}
 spec:
+{{- if .Values.config.ingress.internal }}
+  # Regional internal Application Load Balancer. Used in projects where organization
+  # policy forbids external load balancers; requires a REGIONAL_MANAGED_PROXY subnet
+  # in the same region and VPC (created by Terraform, see terraform/modules/sdv-network).
+  # There is no HTTPS listener: the internal ALB has no certificate, so the platform is
+  # served over HTTP inside the VPC and config.ingress.scheme is "http".
+  gatewayClassName: gke-l7-rilb
+  {{- with .Values.config.ingress.addressName }}
+  # Reserved internal address so the VIP survives Gateway recreation and matches the
+  # A records in the private Cloud DNS zone. The GKE Gateway controller only accepts
+  # "NamedAddress" here (the name of the google_compute_address); "IPAddress" is
+  # rejected with error GWCER106.
+  addresses:
+  - type: NamedAddress
+    value: {{ . | quote }}
+  {{- end }}
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 80
+    allowedRoutes:
+      kinds:
+      - kind: HTTPRoute
+      namespaces:
+        from: All
+{{- else }}
   gatewayClassName: gke-l7-global-external-managed
   listeners:
   - name: http
@@ -42,6 +70,8 @@ spec:
       - kind: HTTPRoute
       namespaces:
         from: All
+{{- end }}
+{{- if not .Values.config.ingress.internal }}
 ---
 apiVersion: networking.gke.io/v1
 kind: GCPGatewayPolicy
@@ -57,3 +87,5 @@ spec:
     group: gateway.networking.k8s.io
     kind: Gateway
     name: gke-gateway
+{{- end }}
+

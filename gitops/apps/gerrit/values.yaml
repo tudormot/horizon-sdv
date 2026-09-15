@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+config:
+  # Overridden by the parent Application (gitops/templates/gerrit.yaml). The default
+  # matches the standard public deployment.
+  ingress:
+    scheme: https
+
 spec:
   destination:
     server: https://kubernetes.default.svc

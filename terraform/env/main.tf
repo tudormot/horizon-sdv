@@ -599,4 +599,8 @@ module "base" {
   sdv_dns_dnssec_enabled = var.sdv_dns_dnssec_enabled
   # Static A records: no zone delegation, LB cert auth; add A records to parent zone manually
   sdv_dns_use_static_a_records = var.sdv_dns_use_static_a_records
+
+  # Internal ingress (no external load balancer, VPC-only access).
+  sdv_gateway_internal   = var.sdv_gateway_internal
+  sdv_gateway_dev_access = var.sdv_gateway_dev_access
 }

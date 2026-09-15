@@ -35,7 +35,7 @@ spec:
         moduleManagerStateName: cluster
         workflowsNamespace: {{ .Values.config.namespacePrefix }}workflows
         argoWorkflowsNamespace: {{ .Values.config.namespacePrefix }}argo-workflows
-        oidcIssuerUrl: "https://{{ .Values.config.domain }}/auth/realms/horizon"
+        oidcIssuerUrl: "{{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/auth/realms/horizon"
         oidcSkipClientIdCheck: true
         eventsWebhookUrl: "http://webhook-eventsource-svc.{{ .Values.config.namespacePrefix }}argo-events.svc.cluster.local:12000/events/workflow"
         gcsArtifactBucket: {{ .Values.config.projectID }}-argo-workflows

@@ -268,6 +268,14 @@ sdv_dns_dnssec_enabled = true
 # Add A records (domain and mcp.domain) to parent zone manually; LB IP is visible in GCP Console.
 sdv_dns_use_static_a_records = false
 
+# Internal-only deployment: use a regional internal Application Load Balancer
+# instead of the default external one. Only needed when your organization forbids
+# external load balancers. Requires sdv_dns_use_static_a_records = true.
+# See docs/deployment_guide.md#internal-only-deployments.
+sdv_gateway_internal   = false
+# Optional in-cluster relay for `tools/scripts/deployment/dev-access.sh`.
+sdv_gateway_dev_access = false
+
 # Optional: KMS Encryption for GKE Secrets
 # Enable KMS encryption for Kubernetes secrets at rest using customer-managed encryption keys.
 # WARNING: Once enabled and applied, KMS keyrings CANNOT be deleted from GCP (by design for security/compliance).

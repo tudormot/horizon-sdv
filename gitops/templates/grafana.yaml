@@ -76,7 +76,7 @@ spec:
 
         grafana.ini:
           server:
-            root_url: https://{{ .Values.config.domain }}/grafana
+            root_url: {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/grafana
             serve_from_sub_path: true
             domain: {{ .Values.config.domain }}
           auth:
@@ -89,9 +89,9 @@ spec:
             scopes: openid profile email
             client_id: grafana-oauth
             client_secret: SOME_EXAMPLE_client_secret123456
-            auth_url: https://{{ .Values.config.domain }}/auth/realms/horizon/protocol/openid-connect/auth
-            token_url: https://{{ .Values.config.domain }}/auth/realms/horizon/protocol/openid-connect/token
-            api_url: https://{{ .Values.config.domain }}/auth/realms/horizon/protocol/openid-connect/userinfo
+            auth_url: {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/auth/realms/horizon/protocol/openid-connect/auth
+            token_url: {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/auth/realms/horizon/protocol/openid-connect/token
+            api_url: {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/auth/realms/horizon/protocol/openid-connect/userinfo
             allow_assign_grafana_admin: true
             role_attribute_path: contains(roles[*], 'administrators') && 'Admin' || contains(roles[*], 'viewers') && 'Viewer'
             login_attribute_path: username

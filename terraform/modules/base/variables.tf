@@ -504,3 +504,15 @@ variable "sdv_enable_kms_encryption" {
   default     = false
 }
 
+
+variable "sdv_gateway_internal" {
+  description = "Expose the platform through a regional internal Application Load Balancer (gke-l7-rilb) instead of the default global external one. Required in projects where organization policy forbids external load balancers. The platform is then reachable only from inside the VPC, over HTTP."
+  type        = bool
+  default     = false
+}
+
+variable "sdv_gateway_dev_access" {
+  description = "Deploy the optional in-cluster relay that makes the internal Gateway VIP reachable with kubectl port-forward (see tools/scripts/deployment/dev-access.sh). Ignored unless sdv_gateway_internal is set."
+  type        = bool
+  default     = false
+}

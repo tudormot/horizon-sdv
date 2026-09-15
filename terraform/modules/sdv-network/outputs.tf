@@ -26,3 +26,13 @@ output "vpc_nat_ip_name" {
   description = "The name of the created NAT ip address"
   value       = google_compute_address.vpc_nat_ip.name
 }
+
+output "gateway_internal_address" {
+  description = "Reserved internal Gateway VIP (empty unless gateway_internal is set)."
+  value       = var.gateway_internal ? google_compute_address.gateway_internal[0].address : ""
+}
+
+output "gateway_internal_address_name" {
+  description = "Name of the reserved internal Gateway address; the GKE Gateway resolves the VIP by name (empty unless gateway_internal is set)."
+  value       = var.gateway_internal ? google_compute_address.gateway_internal[0].name : ""
+}

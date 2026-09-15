@@ -18,7 +18,7 @@ server:
     name: "horizon-sdv-gerrit"
     default_gerrit_base_url: "http://gerrit-service.gerrit.svc.cluster.local/a"
     internal_url: "http://gerrit-service.gerrit.svc.cluster.local/a"
-    external_url: "https://##DOMAIN##/gerrit/a"
+    external_url: "##SCHEME##://##DOMAIN##/gerrit/a"
 
 spec:
   destination:

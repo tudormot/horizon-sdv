@@ -16,6 +16,36 @@ config:
   name: Horizon SDV
   enableNetworkPolicies: true
 
+  # Ingress mode. All values are set by Terraform on live clusters
+  # (sdv_gateway_internal in terraform.tfvars); the defaults below describe the
+  # standard public deployment documented in docs/deployment_guide.md.
+  ingress:
+    # internal=false: global external Application Load Balancer, TLS terminated by
+    #   Certificate Manager (horizon-sdv-map), public DNS.
+    # internal=true:  regional internal Application Load Balancer (gke-l7-rilb) for
+    #   projects where organization policy forbids external load balancers
+    #   (constraints/compute.restrictLoadBalancerCreationForTypes). Requires a
+    #   REGIONAL_MANAGED_PROXY subnet and a private Cloud DNS zone, both created by
+    #   Terraform, and reachable only from inside the VPC.
+    internal: false
+    # Scheme used to build every externally visible platform URL (OIDC issuers,
+    # redirect URIs, callback URLs) and to select the Gateway listener that
+    # HTTPRoutes bind to. Must be "http" when internal=true, because the internal
+    # ALB has no certificate.
+    scheme: "https"
+    # Name of the reserved internal address for the Gateway (internal mode only, set
+    # by Terraform). The GKE Gateway controller resolves the VIP by address *name*
+    # ("NamedAddress"), not by IP. Empty means "let GKE allocate one", which changes
+    # on Gateway recreation and breaks the private DNS A records.
+    addressName: ""
+    # The IP the reserved address resolves to (internal mode only, set by Terraform).
+    # Not used by the Gateway itself; it is the target of the optional dev-access relay.
+    address: ""
+    # Optional in-cluster TCP relay that makes the private Gateway VIP reachable
+    # through `kubectl port-forward` (see tools/scripts/deployment/dev-access.sh).
+    devAccess:
+      enabled: false
+
   # config.containerImages: set only by the root Argo CD Application (Terraform). Do not add empty keys
   # here — they merge over environment-specific image refs and yield invalid Deployments (empty image:).
 

@@ -34,6 +34,7 @@ spec:
           gitops:
             gerritMcpServer: {{ .Values.config.containerImages.gerritMcpServer | quote }}
             domain: {{ .Values.config.domain }}
+            scheme: {{ .Values.config.ingress.scheme }}
         spec:
           source:
             repoURL: {{ .Values.spec.source.repoURL }}

@@ -46,6 +46,10 @@ spec:
             backendBucket: {{ .Values.config.backendBucket }}
             domain: {{ .Values.config.domain }}
             namespacePrefix: {{ .Values.config.namespacePrefix }}
+            ingress:
+              # Consumed by the JCasC blocks in gitops/workloads/values-jenkins.yaml,
+              # which are rendered with `tpl` against this Application's own values.
+              scheme: {{ .Values.config.ingress.scheme }}
             {{- $ar := .Values.config.arm64 | default dict }}
             arm64:
               region: {{ $ar.region | quote }}
@@ -56,7 +60,7 @@ spec:
                 url: {{ .Values.scm.repoUrl }}
                 branch: {{ .Values.scm.branch }}
           controller:
-            jenkinsUrl: https://{{ .Values.config.domain }}/jenkins
+            jenkinsUrl: {{ .Values.config.ingress.scheme }}://{{ .Values.config.domain }}/jenkins
             jenkinsUriPrefix: /jenkins
             additionalExistingSecrets:
               - name: jenkins-keycloak

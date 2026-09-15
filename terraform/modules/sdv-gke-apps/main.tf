@@ -185,6 +185,7 @@ resource "helm_release" "argocd_main" {
     templatefile("${path.module}/argocd-values.yaml.tpl", {
       subdomain_name = var.subdomain_name
       domain_name    = var.domain_name
+      scheme         = var.ingress_internal ? "http" : "https"
     })
   ]
 
@@ -214,6 +215,7 @@ resource "helm_release" "argocd_subenvs" {
     templatefile("${path.module}/argocd-values.yaml.tpl", {
       subdomain_name = each.value.subdomain
       domain_name    = var.domain_name
+      scheme         = var.ingress_internal ? "http" : "https"
     }),
     yamlencode({
       crds = {
@@ -458,6 +460,13 @@ resource "kubectl_manifest" "argocd_application" {
               environmentName: "${each.value.env_name}"
               enableNetworkPolicies: ${var.enable_network_policies}
               useStaticDnsARecords: ${var.use_static_dns_a_records}
+              ingress:
+                internal: ${var.ingress_internal}
+                scheme: ${var.ingress_internal ? "http" : "https"}
+                addressName: "${var.ingress_address_name}"
+                address: "${var.ingress_address}"
+                devAccess:
+                  enabled: ${var.ingress_dev_access}
               arm64:
                 region: ${local.arm64_placement_region}
                 zone: ${local.arm64_placement_zone}

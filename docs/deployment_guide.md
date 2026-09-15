@@ -319,7 +319,31 @@ git clone <REPOSITORY_URL>
     - `sdv_dns_dnssec_enabled`: Enable DNSSEC for the Cloud DNS zone. Requires domain ownership verification at [Google Search Console](https://search.google.com/search-console). Set to `false` to disable DNSSEC. Default: `true`.
     - `sdv_enable_kms_encryption`: Enable KMS encryption for Kubernetes secrets at rest using customer-managed encryption keys. Set to `false` (default) to skip KMS encryption and allow clean Terraform destroy. Set to `true` to enable application-layer secrets encryption. **Warning:** Once enabled and applied, KMS keyrings cannot be deleted from GCP; the only way to remove them is to delete the entire project.
     - `manual_secrets` : Optional map of secret values that can be set manually.
+    - `sdv_gateway_internal`: Expose the platform through a **regional internal** Application Load Balancer (`gke-l7-rilb`) instead of the default global external one. Set this to `true` only if your organization forbids external load balancers (`constraints/compute.restrictLoadBalancerCreationForTypes`). Requires `sdv_dns_use_static_a_records = true`. Terraform then additionally creates a `REGIONAL_MANAGED_PROXY` subnet, a reserved internal VIP and a private Cloud DNS zone that resolves the platform domain to that VIP, and skips the Google-managed certificate. Default: `false`. See [Internal-only deployments](#internal-only-deployments).
+    - `sdv_gateway_dev_access`: Deploy the optional in-cluster relay used by `tools/scripts/deployment/dev-access.sh` to reach an internal deployment from a workstation. Ignored unless `sdv_gateway_internal` is `true`. Default: `false`.
     - **Sub-Environments:** To deploy one or more sub-environments on the same cluster, define the `sdv_sub_env_configs` variable in `terraform.tfvars`. See the [Sub-Environment Deployment Guide](guides/sub_environments/sub_environment_deployment_guide.md#configuring-sub-environments) for the variable structure, required passwords, and naming rules.
+
+#### Internal-only deployments
+
+Some GCP organizations block external load balancers. In that case the platform cannot be published on a public hostname, and `sdv_gateway_internal = true` switches the deployment to a VPC-internal one. The trade-offs are:
+
+| | External (default) | Internal |
+|---|---|---|
+| Ingress | global external ALB | regional internal ALB (`gke-l7-rilb`) |
+| TLS | Google-managed certificate | none — the platform is served over **HTTP** inside the VPC |
+| DNS | public Cloud DNS, nameserver delegation ([Section #3b](#section-3b---update-nameservers)) | private Cloud DNS zone created by Terraform |
+| Browser access | any network | VPC only, or `tools/scripts/deployment/dev-access.sh` from a workstation |
+| Google identity brokering ([Section #1d](#section-1d---create-oauth2-client-and-secret)) | supported | **not supported** (Google requires an `https` redirect URI) — use local Keycloak users |
+| Inbound SCM webhooks | supported | **not supported** — Argo CD still polls the repository |
+
+To reach the platform from a workstation, set `sdv_gateway_dev_access = true` and run:
+
+```bash
+./tools/scripts/deployment/dev-access.sh          # Ctrl+C to stop
+./tools/scripts/deployment/dev-access.sh --undo   # remove the /etc/hosts entries
+```
+
+Because the platform URLs registered in Keycloak carry no port, the script listens on port 80 by default and asks for `sudo` to bind it and to edit `/etc/hosts`.
 
 ### Section #2d - Run the Deployment Script
 Steps to start the Terraform workflow.
