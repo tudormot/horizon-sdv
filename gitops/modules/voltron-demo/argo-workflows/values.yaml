@@ -1,0 +1,102 @@
+# Copyright (c) 2026 Accenture, All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Namespace where WorkflowTemplates and submitted Workflows run
+# (must match the Argo Workflows controller.workflowNamespaces).
+workflowNamespace: workflows
+
+# Namespace where Argo Events Sensors are installed.
+eventsNamespace: argo-events
+
+# Module name, injected by the parent chart. Prefixes the WorkflowTemplate names.
+parentModuleName: voltron-demo
+
+# Injected by the parent chart from Module Manager environment config.
+gcpProjectId: ""
+gcpRegion: ""
+
+# Shared image-build ClusterWorkflowTemplate, published by module workloads-common.
+clusterWorkflowTemplateName: common-docker-image-build
+
+spec:
+  # Source of the Dockerfile and all image assets. The Dockerfile lives at the
+  # repository root so that build context == Dockerfile directory, which is what
+  # common-docker-image-build requires.
+  sdvDemosRepo: "https://sdv.googlesource.com/experimental/sdv-demos"
+  sdvDemosRevision: "main"
+
+  # Base image, consumed read-only; this module must never write it.
+  #
+  # This MUST be the cicd-foundation Android Studio for Platform image, which
+  # sdv-demos/docker/skaffold.yaml declares as its BASE_IMAGE requirement:
+  #
+  #   requires:
+  #     - git: {repo: .../GoogleCloudPlatform/cicd-foundation.git,
+  #             path: apps/workstations/android-studio-for-platform/skaffold.yaml}
+  #
+  # It provides the GNOME Wayland session streamed in-browser by Apache
+  # Guacamole (guacd + guacamole + nginx) that the demo expects, and is
+  # published to the `sdv-images` repository in europe-west4.
+  #
+  # Do NOT point this at horizon-sdv/android-studio-for-platform. Despite the
+  # identical image name, that one is built by Horizon's own
+  # workloads/cloud-workstations/.../horizon-asfp pipeline from
+  # cloud-workstations-custom-image-examples, and ships a TigerVNC + noVNC
+  # desktop instead of Guacamole. Building on it yields a workstation with the
+  # wrong remote-desktop stack.
+  asfpImageRegistry: "europe-west4-docker.pkg.dev"
+  asfpImageName: "sdv-images/android-studio-for-platform"
+  asfpImageTag: "latest"
+
+  # Image produced by this pipeline. Distinct from the ASfP base image so the two
+  # pipelines cannot overwrite each other.
+  dockerArtifactPathName: "horizon-sdv/voltron-demo"
+  imageTag: "latest"
+
+  # Cloud Workstations cluster and the pre-existing builder config used to
+  # materialise a persistent disk that is then snapshotted.
+  workstationCluster: "sdv-cluster"
+  builderConfig: "sdv-asfp-carla-builder"
+
+  # Long-lived workstation config published by the promote step, so a verified
+  # snapshot is immediately launchable rather than just sitting in the project.
+  promotedConfig: "voltron-demo-latest"
+
+  # Machine spec for both the throwaway tester workstation and the published
+  # config. 32 vCPU is needed because the acceptance suite runs two Cuttlefish
+  # VMs (launch_2vm) alongside a CARLA server.
+  testerMachineType: "n1-standard-32"
+  acceleratorType: "nvidia-tesla-t4"
+  acceleratorCount: 1
+
+  # The pipeline creates and destroys Cloud Workstations, disks and snapshots,
+  # so it needs the elevated workflow identity.
+  useElevatedWorkflowIam: true
+  serviceAccountName: "workflow-executor"
+
+  # This module declares no IAM of its own. The two project-level roles it relies
+  # on -- roles/workstations.admin and roles/compute.instanceAdmin.v1 -- are
+  # already granted to gke-argo-workflows-elevated-sa by the platform Terraform
+  # (terraform/env/main.tf, and the argo_workflows_elevated template in
+  # terraform/env/locals.tf for sub-envs). See the IAM section of the README.
+
+  # Pinned tool images. Avoid floating tags so builds stay reproducible.
+  kubectlImage: "docker.io/bitnamilegacy/kubectl:1.31.4"
+  gitImage: "alpine/git:2.45.2"
+  cloudSdkImage: "google/cloud-sdk:alpine"
+
+workflowDefaults:
+  ttlStrategy:
+    secondsAfterCompletion: 86400
+    secondsAfterFailure: 259200
