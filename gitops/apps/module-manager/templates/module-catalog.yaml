@@ -62,3 +62,11 @@ spec:
       overviewServiceNamespace: {{ .Values.namespace | quote }}
       hardDependencies:
         - workloads-common
+    - name: voltron-demo
+      path: gitops/modules/voltron-demo
+      overviewPath: portal/overview.html
+      overviewService: mod-voltron-demo-overview
+      overviewServiceNamespace: {{ .Values.namespace | quote }}
+      # Requires ClusterWorkflowTemplate common-docker-image-build.
+      hardDependencies:
+        - workloads-common
