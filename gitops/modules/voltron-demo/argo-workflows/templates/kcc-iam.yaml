@@ -1,0 +1,55 @@
+# Copyright (c) 2026 Accenture, All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Project-level IAM for the voltron-demo pipeline, declared as Config Connector
+# (KCC) resources.
+#
+# The pipeline runs as the Kubernetes service account
+# workflows/workflow-executor-elevated, which is bound by Workload Identity to
+# the Google service account below. To create and tear down Cloud Workstations
+# and to snapshot their persistent disks, that identity needs the roles listed
+# in values.yaml.
+#
+# These are expressed as IAMPolicyMember CRs rather than Terraform because
+# per-module GCP resources belong in the module chart (see the horizon-dev
+# module conventions); Terraform is reserved for shared platform infrastructure.
+#
+# IAMPolicyMember is additive: it manages only the single (member, role) pair it
+# names and leaves every other binding on the project untouched, so this cannot
+# clobber bindings owned by Terraform or by other modules.
+{{- if .Values.spec.iam.enabled }}
+{{- $top := . }}
+{{- range $role := .Values.spec.iam.roles }}
+---
+apiVersion: iam.cnrm.cloud.google.com/v1beta1
+kind: IAMPolicyMember
+metadata:
+  # Role names contain characters that are invalid in a resource name, so derive
+  # a stable, DNS-safe suffix from the role.
+  name: {{ printf "%s-%s" $top.Values.parentModuleName (regexReplaceAll "[^a-zA-Z0-9]+" $role "-") | trimSuffix "-" | lower | trunc 63 | trimSuffix "-" }}
+  namespace: {{ $top.Values.spec.iam.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+    cnrm.cloud.google.com/project-id: {{ $top.Values.gcpProjectId | quote }}
+  labels:
+    app.kubernetes.io/name: {{ $top.Values.parentModuleName }}
+spec:
+  member: {{ printf "serviceAccount:%s@%s.iam.gserviceaccount.com" $top.Values.spec.iam.serviceAccount $top.Values.gcpProjectId | quote }}
+  role: {{ $role | quote }}
+  resourceRef:
+    apiVersion: resourcemanager.cnrm.cloud.google.com/v1beta1
+    kind: Project
+    external: {{ printf "projects/%s" $top.Values.gcpProjectId | quote }}
+{{- end }}
+{{- end }}

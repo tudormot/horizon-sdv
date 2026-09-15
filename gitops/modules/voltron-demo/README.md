@@ -37,20 +37,31 @@ gitops/modules/voltron-demo/
 └── argo-workflows/
     ├── Chart.yaml
     ├── values.yaml                           # all deploy-time configuration
+    ├── files/                                # step bodies, mounted at /scripts
+    │   ├── build-snapshot.sh
+    │   ├── test-artifacts.sh
+    │   ├── promote-snapshot.sh
+    │   └── test_artifacts.bats               # acceptance suite, runs on the workstation
     └── templates/
         ├── _helpers.tpl
         ├── workflowtemplates.yaml            # voltron-demo-init + voltron-demo-execute
+        ├── configmap-scripts.yaml            # publishes files/ to the workflow namespace
+        ├── kcc-iam.yaml                      # IAMPolicyMember grants (Config Connector)
         └── sensors.yaml
 ```
+
+Step bodies live under `files/` rather than as inline `args:` blocks so they can be
+read, diffed, shell-linted and executed outside the cluster. This mirrors
+`workloads-common/prepare-github-app-git-creds`, which mounts
+`files/github_app_installation_token.py` the same way.
 
 ## Pipelines
 
 ### `voltron-demo-init`
 
-Preflight. Validates the supplied credentials against `sdv-demos`, confirms the
-configured revision exists, and asserts the Dockerfile is at the repository root.
-Run this first: it fails in seconds where the build would fail after tens of
-minutes.
+Preflight. Validates the supplied credentials against `sdv-demos` and confirms the
+configured revision exists. Run this first: it fails in seconds where the build
+would fail after tens of minutes.
 
 ### `voltron-demo-execute`
 
@@ -59,10 +70,52 @@ minutes.
 | 1 | `prepare-gob-git-creds` | Converts the supplied gitcookies into a per-run `{{workflow.uid}}-sdv-demos-git-creds` Secret. |
 | 2 | `build-image` | Delegates to the shared `common-docker-image-build` ClusterWorkflowTemplate to build and push the image. |
 | 3 | `build-snapshot` | Provisions a builder workstation, then snapshots its persistent disk. |
-| 4 | `test-artifacts` | Boots a GPU test workstation from the snapshot and verifies CARLA RPC and `launch_2vm`. |
-| 5 | `promote-snapshot` | Moves the `is-latest=true` label onto the validated snapshot. |
+| 4 | `test-artifacts` | Boots a GPU test workstation from the snapshot and runs `files/test_artifacts.bats` on it. |
+| 5 | `promote-snapshot` | Moves the `is-latest=true` label onto the validated snapshot **and** publishes the `voltron-demo-latest` workstation config built from it. |
 
 An `onExit` handler deletes the credentials Secret whatever the outcome.
+
+The acceptance suite is uploaded to the test workstation as a file and executed
+with `bats`, rather than being inlined into a `gcloud workstations ssh --command`
+string. `bats` is expected to be present in the image; it is installed by the
+`sdv-demos` Dockerfile.
+
+## Why `gcloud` and not Config Connector (KCC)
+
+Per the horizon-dev module conventions, a module should declare its GCP resources
+as Config Connector CRs rather than Terraform. This module does that **for its
+IAM** (`templates/kcc-iam.yaml`), but drives Cloud Workstations and snapshots
+through `gcloud`. The reasons are specific rather than stylistic:
+
+* **No CRDs exist for most of it.** The cluster runs the GKE Config Connector
+  add-on at **v1.126.0**, which ships `WorkstationCluster` but neither
+  `WorkstationConfig` nor `Workstation`. Upstream KCC only promoted
+  `WorkstationConfig` to `v1beta1` in **1.132.0**, and the GKE add-on omits alpha
+  CRDs. Its version is chosen by Google and tied to the GKE control-plane version,
+  so it cannot be bumped from this repo.
+* **The disk name only exists at runtime.** The snapshot source is discovered with
+  `gcloud compute disks list --filter=labels.workstation_id=…` after the builder
+  workstation has started. A Helm-rendered CR cannot reference it.
+* **The lifecycle is one-shot, not reconciled.** `create → start → stop → snapshot
+  → delete` is imperative by nature, and KCC's default deletion policy would
+  delete the promoted snapshot along with its CR.
+
+The one resource that *would* suit KCC is the long-lived `voltron-demo-latest`
+config produced by `promote-snapshot`. Revisit this if the cluster ever moves to
+Config Connector ≥ 1.132.
+
+## IAM
+
+The pipeline runs as `workflows/workflow-executor-elevated`, bound by Workload
+Identity to `gke-argo-workflows-elevated-sa`. It needs `roles/workstations.admin`
+and `roles/compute.storageAdmin`, granted as `IAMPolicyMember` CRs in the `gcp`
+namespace (which holds a `ConfigConnectorContext`; the `workflows` one is owned
+and torn down by `workloads-android`).
+
+`IAMPolicyMember` is additive — it manages only the `(member, role)` pairs it
+names and leaves other bindings on the project untouched. Set
+`spec.iam.enabled: false` in `argo-workflows/values.yaml` if these roles are
+granted out-of-band instead.
 
 ## Parameters
 

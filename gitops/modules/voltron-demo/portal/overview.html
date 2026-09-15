@@ -21,9 +21,8 @@
   <div class="card">
     <h2>Pipeline: <code>voltron-demo-init</code></h2>
     <p>Fast preflight, run this first. Verifies that the supplied credentials reach
-       <code>sdv-demos</code>, that the configured revision exists, and that the
-       Dockerfile is at the repository root. Fails in seconds instead of after a
-       multi-gigabyte build.</p>
+       <code>sdv-demos</code> and that the configured revision exists. Fails in
+       seconds instead of after a multi-gigabyte build.</p>
   </div>
 
   <div class="card">
@@ -32,8 +31,8 @@
     <ul>
       <li><strong>Step 1: Container Build</strong> — Clones <code>sdv-demos</code> and builds the ASfP + CARLA 0.9.15 + SOME/IP image via the shared <code>common-docker-image-build</code> template, pushing to Artifact Registry as <code>voltron-demo</code>.</li>
       <li><strong>Step 2: Workspace &amp; Candidate Snapshot</strong> — Provisions a high-CPU builder workstation, installs CARLA 0.9.15, applies patches and builds AAOS 26Q2, then captures a candidate GCE persistent disk snapshot.</li>
-      <li><strong>Step 3: Automated Test Suite</strong> — Launches a GPU-accelerated test workstation and validates CARLA RPC (port 2000) and dual-VM vehicle simulation (<code>launch_2vm</code>).</li>
-      <li><strong>Step 4: Atomic Promotion</strong> — On test success, atomically labels the validated snapshot as <code>is-latest=true</code>.</li>
+      <li><strong>Step 3: Automated Test Suite</strong> — Launches a GPU-accelerated test workstation from the candidate snapshot and runs a BATS acceptance suite on it, covering CARLA RPC (port 2000), the <code>ds_toolkit</code> host tool, and dual-VM vehicle simulation (<code>launch_2vm</code> plus <code>cvd fleet</code>).</li>
+      <li><strong>Step 4: Atomic Promotion</strong> — On test success, labels the validated snapshot <code>is-latest=true</code> and publishes a ready-to-use <code>voltron-demo-latest</code> workstation configuration built from it.</li>
     </ul>
   </div>
 
