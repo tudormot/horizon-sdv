@@ -31,16 +31,22 @@ workflow-executor-elevated
 {{- end -}}
 
 {{/*
-ASfP base image: consumed as a build-arg, never pushed by this module.
+Fully qualified name of one cicd-foundation layer built by this module.
 
-The registry host is configurable independently of `voltron-demo.registry`
-because the base image is published by a different pipeline, which need not
-target the same region (or even the same Artifact Registry repository) as this
-module's own output image.
+Call with a dict: (dict "ctx" . "layer" "gnome"). Helm templates take a single
+argument, and the layer names are needed both as build destinations and as the
+BASE_IMAGE of the next layer up, so a dict keeps the two in lock-step instead
+of repeating the path composition at every call site.
 */}}
-{{- define "voltron-demo.asfpBaseImage" -}}
-{{- $registry := .Values.spec.asfpImageRegistry | default (include "voltron-demo.registry" .) -}}
-{{- printf "%s/%s/%s:%s" $registry .Values.gcpProjectId .Values.spec.asfpImageName .Values.spec.asfpImageTag -}}
+{{- define "voltron-demo.cicdFoundationImage" -}}
+{{- $ctx := .ctx -}}
+{{- $cf := $ctx.Values.spec.cicdFoundation -}}
+{{- printf "%s/%s/%s%s:%s" (include "voltron-demo.registry" $ctx) $ctx.Values.gcpProjectId $cf.imagePathPrefix .layer $cf.ref -}}
+{{- end -}}
+
+{{/* Artifact Registry path (no host, no tag) for one cicd-foundation layer. */}}
+{{- define "voltron-demo.cicdFoundationImagePath" -}}
+{{- printf "%s%s" .ctx.Values.spec.cicdFoundation.imagePathPrefix .layer -}}
 {{- end -}}
 
 {{/*

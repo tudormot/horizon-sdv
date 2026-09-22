@@ -36,31 +36,48 @@ spec:
   sdvDemosRepo: "https://sdv.googlesource.com/experimental/sdv-demos"
   sdvDemosRevision: "main"
 
-  # Base image, consumed read-only; this module must never write it.
+  # Base image, built by this pipeline from cicd-foundation.
   #
-  # This MUST be the cicd-foundation Android Studio for Platform image, which
-  # sdv-demos/docker/skaffold.yaml declares as its BASE_IMAGE requirement:
+  # sdv-demos does not ship a base image; its docker/skaffold.yaml `requires:`
+  # the cicd-foundation Android Studio for Platform config at an immutable ref
+  # and lets skaffold build that whole chain as the BASE_IMAGE for the demo
+  # layer. This module reproduces that: rather than consuming somebody else's
+  # prebuilt artefact, it builds the five cicd-foundation layers itself and
+  # pushes them here, then builds the demo layer on top.
   #
-  #   requires:
-  #     - git: {repo: .../GoogleCloudPlatform/cicd-foundation.git,
-  #             path: apps/workstations/android-studio-for-platform/skaffold.yaml}
+  # The ref below MUST match the one sdv-demos declares. The pipeline asserts
+  # this on every run and fails loudly on drift, because a mismatch means the
+  # demo layer is built on a base its Dockerfile was never tested against.
+  # To bump it, follow the review procedure in sdv-demos/docker/README.md and
+  # change both places.
   #
-  # It provides the GNOME Wayland session streamed in-browser by Apache
-  # Guacamole (guacd + guacamole + nginx) that the demo expects, and is
-  # published to the `sdv-images` repository in europe-west4.
-  #
-  # Do NOT point this at horizon-sdv/android-studio-for-platform. Despite the
-  # identical image name, that one is built by Horizon's own
-  # workloads/cloud-workstations/.../horizon-asfp pipeline from
-  # cloud-workstations-custom-image-examples, and ships a TigerVNC + noVNC
-  # desktop instead of Guacamole. Building on it yields a workstation with the
-  # wrong remote-desktop stack.
-  asfpImageRegistry: "europe-west4-docker.pkg.dev"
-  asfpImageName: "sdv-images/android-studio-for-platform"
-  asfpImageTag: "latest"
+  # Why not consume a prebuilt android-studio-for-platform image: two unrelated
+  # images share that name in this project -- the cicd-foundation one and the
+  # one Horizon's own workloads/cloud-workstations/.../horizon-asfp pipeline
+  # builds from cloud-workstations-custom-image-examples. Building the chain
+  # here removes the ambiguity entirely, and the `cicd-foundation-` prefix makes
+  # the provenance of every layer legible from its name alone.
+  cicdFoundation:
+    repo: "https://github.com/GoogleCloudPlatform/cicd-foundation.git"
+    ref: "v8.0.1"
 
-  # Image produced by this pipeline. Distinct from the ASfP base image so the two
-  # pipelines cannot overwrite each other.
+    # Artifact Registry path prefix for the layers this module builds. Layer
+    # names are appended verbatim, giving for example
+    # <region>-docker.pkg.dev/<project>/horizon-sdv/cicd-foundation-gnome:<ref>.
+    imagePathPrefix: "horizon-sdv/cicd-foundation-"
+
+    # Build args, defaulted exactly as cicd-foundation's skaffold configs do.
+    # GCP_REGION is not listed: it only selects which regional mirror of the
+    # predefined cloud-workstations image the Cuttlefish builder stage pulls
+    # from, and is set to this deployment's own region.
+    buildArgs:
+      alpineVersion: "3.24"
+      cwsBaseImageTag: "latest"
+      preflightWebRepo: ""
+      preflightWebDir: ""
+
+  # Image produced by this pipeline. Distinct from the base image so the two
+  # cannot overwrite each other.
   dockerArtifactPathName: "horizon-sdv/voltron-demo"
   imageTag: "latest"
 

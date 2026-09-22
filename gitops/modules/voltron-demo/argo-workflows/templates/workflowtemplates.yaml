@@ -23,6 +23,13 @@
 # service account is listed as a `robot` reader on the Git-on-Borg `sdv` host,
 # which is the only identity class that host authorises over HTTPS (its human
 # readers are MDB groups, and those resolve only over sso:// and rpc://).
+#
+# The base image is built here too, not consumed from elsewhere. sdv-demos
+# declares its base by `requires:`-ing a cicd-foundation skaffold config at an
+# immutable ref, so the five layers below the demo layer are built from that
+# repository at that ref and pushed as cicd-foundation-<layer>:<ref>. They are
+# built only when the top of the chain is not already present, which makes the
+# first run expensive and every subsequent run free. See README.md.
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
@@ -48,14 +55,29 @@ spec:
         value: ""
         description: Populated by the Developer Portal / Horizon CLI. Leave empty.
   templates:
+    - name: run-init
+      dag:
+        tasks:
+          - name: preflight-sdv-demos
+            template: preflight-sdv-demos
+
+          # Reports rather than gates. A missing base image is not an error, it
+          # only means the next execute run has to build the chain first --
+          # which is the difference between a run of minutes and one of hours,
+          # so it is worth knowing before starting one.
+          - name: report-base-image
+            template: report-base-image
+
     # Cheap preflight. Catches a revoked robot grant, an unreachable repository
     # or a missing revision in seconds, rather than after a multi-GB image build.
+    # It also asserts that the cicd-foundation ref this module pins is still the
+    # one sdv-demos declares.
     #
     # Two containers because no single available image can do both halves: the
     # metadata server needs an HTTP client (google/cloud-sdk:alpine has curl but
     # no git for the check we want) and the check itself needs git. They share an
     # emptyDir so the credential never leaves the pod.
-    - name: run-init
+    - name: preflight-sdv-demos
       volumes:
         - name: scripts
           configMap:
@@ -93,9 +115,16 @@ spec:
             value: {{ .Values.spec.sdvDemosRevision | quote }}
           - name: GIT_TERMINAL_PROMPT
             value: "0"
+          - name: CICD_FOUNDATION_REPO
+            value: {{ .Values.spec.cicdFoundation.repo | quote }}
+          - name: CICD_FOUNDATION_REF
+            value: {{ .Values.spec.cicdFoundation.ref | quote }}
         volumeMounts:
           - name: gob-token
             mountPath: /gob-token
+            readOnly: true
+          - name: scripts
+            mountPath: /scripts
             readOnly: true
         args:
           - |
@@ -131,10 +160,66 @@ spec:
             fi
             echo "OK: ${LS_REMOTE}"
 
+            # Verify the base-image pin against the authority for it. A shallow
+            # clone is enough and costs a second or two; the repository is small
+            # and only docker/skaffold.yaml is read.
+            echo "Verifying the pinned cicd-foundation revision..."
+            rm -rf /tmp/sdv-demos
+            git clone --quiet --depth 1 --branch "${SDV_DEMOS_REVISION}" \
+              "${SDV_DEMOS_REPO}" /tmp/sdv-demos
+            SKAFFOLD_FILE=/tmp/sdv-demos/docker/skaffold.yaml \
+            EXPECTED_REF="${CICD_FOUNDATION_REF}" \
+            EXPECTED_REPO="${CICD_FOUNDATION_REPO}" \
+              sh /scripts/assert-pinned-ref.sh
+
             echo "Preflight passed."
         resources:
           requests:
             cpu: "250m"
+            memory: "256Mi"
+          limits:
+            memory: "512Mi"
+
+    # Informational only: says whether the next execute run will have to build
+    # the cicd-foundation chain. Never fails on a missing image, because a
+    # missing image is the normal state before the first run.
+    - name: report-base-image
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
+      container:
+        image: {{ .Values.spec.cloudSdkImage }}
+        command: [sh, -c]
+        env:
+          - name: PROJECT
+            value: {{ .Values.gcpProjectId | quote }}
+          - name: REGION
+            value: {{ .Values.gcpRegion | quote }}
+          - name: IMAGE_PATH
+            value: {{ include "voltron-demo.cicdFoundationImagePath" (dict "ctx" . "layer" "android-studio-for-platform") | quote }}
+          - name: REF
+            value: {{ .Values.spec.cicdFoundation.ref | quote }}
+          - name: OUT_FILE
+            value: /tmp/base_image_exists
+        volumeMounts:
+          - name: scripts
+            mountPath: /scripts
+            readOnly: true
+        args:
+          - |
+            set -eu
+            sh /scripts/check-base-image.sh
+            if [ "$(cat /tmp/base_image_exists)" = "true" ]; then
+              echo "voltron-demo-execute will reuse it and go straight to the demo image."
+            else
+              echo "voltron-demo-execute will build the five cicd-foundation layers first."
+              echo "Expect that run to take substantially longer than a cached one."
+            fi
+        resources:
+          requests:
+            cpu: "100m"
             memory: "256Mi"
           limits:
             memory: "512Mi"
@@ -174,12 +259,36 @@ spec:
           - name: prepare-gob-git-creds
             template: prepare-gob-git-creds
 
+          # Fails the run before anything expensive happens if the base-image
+          # pin no longer agrees with sdv-demos.
+          - name: assert-pinned-ref
+            depends: prepare-gob-git-creds.Succeeded
+            template: assert-pinned-ref
+
+          - name: check-base-image
+            depends: assert-pinned-ref.Succeeded
+            template: check-base-image
+
+          # Builds the cicd-foundation layers when they are missing. Kept in
+          # its own DAG so that a single `when` governs the whole chain: were
+          # the guard repeated per task, a cache hit would mark the first task
+          # Skipped and every task after it Omitted, and an Omitted final layer
+          # would take build-image down with it.
+          - name: build-base-chain
+            depends: check-base-image.Succeeded
+            when: '"{{ "{{" }}tasks.check-base-image.outputs.parameters.baseImageExists{{ "}}" }}" == "false"'
+            template: build-base-chain
+
+
           # Delegates to the shared ClusterWorkflowTemplate from module
           # workloads-common. It runs buildkit, which (unlike Kaniko) honours the
           # `# syntax=` directive and COPY --chmod used throughout the sdv-demos
           # Dockerfile.
+          #
+          # Accepts build-base-chain as Skipped as well as Succeeded: skipping
+          # is the expected outcome whenever the base image is already built.
           - name: build-image
-            depends: prepare-gob-git-creds.Succeeded
+            depends: prepare-gob-git-creds.Succeeded && (build-base-chain.Succeeded || build-base-chain.Skipped)
             templateRef:
               name: {{ .Values.clusterWorkflowTemplateName | quote }}
               template: build
@@ -219,7 +328,7 @@ spec:
                 # build args at all and the build fails on a blank FROM.
                 - name: buildArgs
                   value: |
-                    BASE_IMAGE={{ include "voltron-demo.asfpBaseImage" . }}
+                    BASE_IMAGE={{ include "voltron-demo.cicdFoundationImage" (dict "ctx" . "layer" "android-studio-for-platform") }}
 
           - name: build-snapshot
             depends: build-image.Succeeded
@@ -252,6 +361,278 @@ spec:
                   value: {{ .Values.spec.workstationCluster | quote }}
                 - name: candidateSnapshotName
                   value: '{{ "{{" }}tasks.build-snapshot.outputs.parameters.candidateSnapshotName{{ "}}" }}'
+
+    - name: build-base-chain
+      dag:
+        tasks:
+          # ----------------------------------------------------------------
+          # cicd-foundation base chain.
+          #
+          # These five reproduce what `skaffold build` does for the `requires:`
+          # entry in sdv-demos/docker/skaffold.yaml, in the order skaffold would
+          # resolve them:
+          #
+          #   preflight -> common -> remote-desktop -> gnome -> asfp
+          #
+          # They are skipped wholesale when the top of the chain already exists
+          # at this ref, so only the first run after a bump pays for them.
+          #
+          # preflight and common need a build context wider than their own
+          # directory, which is what contextDir is for.
+          # ----------------------------------------------------------------
+          - name: build-cicd-preflight
+            templateRef:
+              name: {{ .Values.clusterWorkflowTemplateName | quote }}
+              template: build
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: source
+                  path: /workspace
+                  git:
+                    repo: {{ .Values.spec.cicdFoundation.repo | quote }}
+                    revision: {{ .Values.spec.cicdFoundation.ref | quote }}
+                    depth: 1
+              parameters:
+                - name: horizonSubmittedFrom
+                  value: '{{ "{{" }}workflow.parameters.horizonSubmittedFrom{{ "}}" }}'
+                - name: cloudProject
+                  value: {{ .Values.gcpProjectId | quote }}
+                - name: cloudRegion
+                  value: {{ .Values.gcpRegion | quote }}
+                - name: dockerArtifactPathName
+                  value: {{ include "voltron-demo.cicdFoundationImagePath" (dict "ctx" . "layer" "preflight") | quote }}
+                - name: imageTag
+                  value: {{ .Values.spec.cicdFoundation.ref | quote }}
+                - name: dockerfileDir
+                  value: "apps/workstations/preflight"
+                - name: contextDir
+                  value: "apps/workstations"
+{{- if or .Values.spec.cicdFoundation.buildArgs.preflightWebRepo .Values.spec.cicdFoundation.buildArgs.preflightWebDir }}
+                - name: buildArgs
+                  value: |
+                    PREFLIGHT_WEB_REPO={{ .Values.spec.cicdFoundation.buildArgs.preflightWebRepo }}
+                    PREFLIGHT_WEB_DIR={{ .Values.spec.cicdFoundation.buildArgs.preflightWebDir }}
+{{- end }}
+
+          - name: build-cicd-common
+            depends: build-cicd-preflight.Succeeded
+            templateRef:
+              name: {{ .Values.clusterWorkflowTemplateName | quote }}
+              template: build
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: source
+                  path: /workspace
+                  git:
+                    repo: {{ .Values.spec.cicdFoundation.repo | quote }}
+                    revision: {{ .Values.spec.cicdFoundation.ref | quote }}
+                    depth: 1
+              parameters:
+                - name: horizonSubmittedFrom
+                  value: '{{ "{{" }}workflow.parameters.horizonSubmittedFrom{{ "}}" }}'
+                - name: cloudProject
+                  value: {{ .Values.gcpProjectId | quote }}
+                - name: cloudRegion
+                  value: {{ .Values.gcpRegion | quote }}
+                - name: dockerArtifactPathName
+                  value: {{ include "voltron-demo.cicdFoundationImagePath" (dict "ctx" . "layer" "common") | quote }}
+                - name: imageTag
+                  value: {{ .Values.spec.cicdFoundation.ref | quote }}
+                - name: dockerfileDir
+                  value: "apps/workstations/common"
+                # Repository root: this layer copies in the consolidated root Go
+                # module, which lives well above its own directory.
+                - name: contextDir
+                  value: "."
+                - name: buildArgs
+                  value: |
+                    ALPINE_VERSION={{ .Values.spec.cicdFoundation.buildArgs.alpineVersion }}
+                    PREFLIGHT_IMAGE={{ include "voltron-demo.cicdFoundationImage" (dict "ctx" . "layer" "preflight") }}
+
+          - name: build-cicd-remote-desktop
+            depends: build-cicd-common.Succeeded
+            templateRef:
+              name: {{ .Values.clusterWorkflowTemplateName | quote }}
+              template: build
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: source
+                  path: /workspace
+                  git:
+                    repo: {{ .Values.spec.cicdFoundation.repo | quote }}
+                    revision: {{ .Values.spec.cicdFoundation.ref | quote }}
+                    depth: 1
+              parameters:
+                - name: horizonSubmittedFrom
+                  value: '{{ "{{" }}workflow.parameters.horizonSubmittedFrom{{ "}}" }}'
+                - name: cloudProject
+                  value: {{ .Values.gcpProjectId | quote }}
+                - name: cloudRegion
+                  value: {{ .Values.gcpRegion | quote }}
+                - name: dockerArtifactPathName
+                  value: {{ include "voltron-demo.cicdFoundationImagePath" (dict "ctx" . "layer" "remote-desktop") | quote }}
+                - name: imageTag
+                  value: {{ .Values.spec.cicdFoundation.ref | quote }}
+                - name: dockerfileDir
+                  value: "apps/workstations/remote-desktop"
+                - name: buildArgs
+                  value: |
+                    BASE_IMAGE={{ include "voltron-demo.cicdFoundationImage" (dict "ctx" . "layer" "common") }}
+
+          - name: build-cicd-gnome
+            depends: build-cicd-remote-desktop.Succeeded
+            templateRef:
+              name: {{ .Values.clusterWorkflowTemplateName | quote }}
+              template: build
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: source
+                  path: /workspace
+                  git:
+                    repo: {{ .Values.spec.cicdFoundation.repo | quote }}
+                    revision: {{ .Values.spec.cicdFoundation.ref | quote }}
+                    depth: 1
+              parameters:
+                - name: horizonSubmittedFrom
+                  value: '{{ "{{" }}workflow.parameters.horizonSubmittedFrom{{ "}}" }}'
+                - name: cloudProject
+                  value: {{ .Values.gcpProjectId | quote }}
+                - name: cloudRegion
+                  value: {{ .Values.gcpRegion | quote }}
+                - name: dockerArtifactPathName
+                  value: {{ include "voltron-demo.cicdFoundationImagePath" (dict "ctx" . "layer" "gnome") | quote }}
+                - name: imageTag
+                  value: {{ .Values.spec.cicdFoundation.ref | quote }}
+                - name: dockerfileDir
+                  value: "apps/workstations/gnome"
+                - name: buildArgs
+                  value: |
+                    BASE_IMAGE={{ include "voltron-demo.cicdFoundationImage" (dict "ctx" . "layer" "remote-desktop") }}
+
+          - name: build-cicd-asfp
+            depends: build-cicd-gnome.Succeeded
+            templateRef:
+              name: {{ .Values.clusterWorkflowTemplateName | quote }}
+              template: build
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: source
+                  path: /workspace
+                  git:
+                    repo: {{ .Values.spec.cicdFoundation.repo | quote }}
+                    revision: {{ .Values.spec.cicdFoundation.ref | quote }}
+                    depth: 1
+              parameters:
+                - name: horizonSubmittedFrom
+                  value: '{{ "{{" }}workflow.parameters.horizonSubmittedFrom{{ "}}" }}'
+                - name: cloudProject
+                  value: {{ .Values.gcpProjectId | quote }}
+                - name: cloudRegion
+                  value: {{ .Values.gcpRegion | quote }}
+                - name: dockerArtifactPathName
+                  value: {{ include "voltron-demo.cicdFoundationImagePath" (dict "ctx" . "layer" "android-studio-for-platform") | quote }}
+                - name: imageTag
+                  value: {{ .Values.spec.cicdFoundation.ref | quote }}
+                - name: dockerfileDir
+                  value: "apps/workstations/android-studio-for-platform"
+                # GCP_REGION only picks which regional mirror the predefined
+                # cloud-workstations image used by the Cuttlefish builder stage
+                # is pulled from; all mirrors carry the same digest, so this
+                # follows the deployment region purely for locality.
+                - name: buildArgs
+                  value: |
+                    BASE_IMAGE={{ include "voltron-demo.cicdFoundationImage" (dict "ctx" . "layer" "gnome") }}
+                    CWS_BASE_IMAGE_TAG={{ .Values.spec.cicdFoundation.buildArgs.cwsBaseImageTag }}
+                    GCP_REGION={{ .Values.gcpRegion }}
+
+    # Guards the base-image pin. The clone is supplied by Argo as a git
+    # artifact, reusing the per-run credentials Secret, so this step needs no
+    # credential handling of its own -- only sdv-demos/docker/skaffold.yaml is
+    # read from it.
+    - name: assert-pinned-ref
+      inputs:
+        artifacts:
+          - name: source
+            path: /workspace
+            git:
+              repo: {{ .Values.spec.sdvDemosRepo | quote }}
+              revision: {{ .Values.spec.sdvDemosRevision | quote }}
+              depth: 1
+              usernameSecret:
+                name: '{{ "{{" }}workflow.uid{{ "}}" }}-sdv-demos-git-creds'
+                key: username
+              passwordSecret:
+                name: '{{ "{{" }}workflow.uid{{ "}}" }}-sdv-demos-git-creds'
+                key: password
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
+      container:
+        image: {{ .Values.spec.gitImage }}
+        command: [sh, /scripts/assert-pinned-ref.sh]
+        env:
+          - name: SKAFFOLD_FILE
+            value: /workspace/docker/skaffold.yaml
+          - name: EXPECTED_REF
+            value: {{ .Values.spec.cicdFoundation.ref | quote }}
+          - name: EXPECTED_REPO
+            value: {{ .Values.spec.cicdFoundation.repo | quote }}
+        volumeMounts:
+          - name: scripts
+            mountPath: /scripts
+            readOnly: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            memory: "256Mi"
+
+    # Decides whether the base chain has to be built. Emitted as an output
+    # parameter so every chain task can gate on it, rather than each of them
+    # repeating the lookup.
+    - name: check-base-image
+      outputs:
+        parameters:
+          - name: baseImageExists
+            valueFrom:
+              path: /tmp/base_image_exists
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
+      container:
+        image: {{ .Values.spec.cloudSdkImage }}
+        command: [sh, /scripts/check-base-image.sh]
+        env:
+          - name: PROJECT
+            value: {{ .Values.gcpProjectId | quote }}
+          - name: REGION
+            value: {{ .Values.gcpRegion | quote }}
+          - name: IMAGE_PATH
+            value: {{ include "voltron-demo.cicdFoundationImagePath" (dict "ctx" . "layer" "android-studio-for-platform") | quote }}
+          - name: REF
+            value: {{ .Values.spec.cicdFoundation.ref | quote }}
+          - name: OUT_FILE
+            value: /tmp/base_image_exists
+        volumeMounts:
+          - name: scripts
+            mountPath: /scripts
+            readOnly: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            memory: "512Mi"
 
     # Publishes the per-run Secret that Argo's git artifact reads, since that
     # artifact accepts only usernameSecret/passwordSecret, never a cookie file.

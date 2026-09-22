@@ -38,6 +38,9 @@ gitops/modules/voltron-demo/
     ├── Chart.yaml
     ├── values.yaml                           # all deploy-time configuration
     ├── files/                                # step bodies, mounted at /scripts
+    │   ├── mint-gob-token.sh
+    │   ├── assert-pinned-ref.sh              # base-image pin drift guard
+    │   ├── check-base-image.sh               # base-image chain cache check
     │   ├── build-snapshot.sh
     │   ├── test-artifacts.sh
     │   ├── promote-snapshot.sh
@@ -58,19 +61,24 @@ read, diffed, shell-linted and executed outside the cluster. This mirrors
 
 ### `voltron-demo-init`
 
-Preflight. Validates the supplied credentials against `sdv-demos` and confirms the
-configured revision exists. Run this first: it fails in seconds where the build
-would fail after tens of minutes.
+Preflight. Validates the pipeline's own credentials against `sdv-demos`, confirms
+the configured revision exists, checks that the pinned cicd-foundation revision
+still matches what sdv-demos declares, and reports whether the base image has
+already been built. Run this first: it fails in seconds where the build would
+fail after tens of minutes.
 
 ### `voltron-demo-execute`
 
 | # | Task | What it does |
 |---|------|--------------|
-| 1 | `prepare-gob-git-creds` | Converts the supplied gitcookies into a per-run `{{workflow.uid}}-sdv-demos-git-creds` Secret. |
-| 2 | `build-image` | Delegates to the shared `common-docker-image-build` ClusterWorkflowTemplate to build and push the image. |
-| 3 | `build-snapshot` | Provisions a builder workstation, then snapshots its persistent disk. |
-| 4 | `test-artifacts` | Boots a GPU test workstation from the snapshot and runs `files/test_artifacts.bats` on it. |
-| 5 | `promote-snapshot` | Moves the `is-latest=true` label onto the validated snapshot **and** publishes the `voltron-demo-latest` workstation config built from it. |
+| 1 | `prepare-gob-git-creds` | Mints a Workload Identity token and publishes it as a per-run `{{workflow.uid}}-sdv-demos-git-creds` Secret, which is the only credential form Argo's git artifact accepts. |
+| 2 | `assert-pinned-ref` | Fails the run if the pinned cicd-foundation revision has drifted from the one sdv-demos declares. |
+| 3 | `check-base-image` | Decides whether the base image chain has to be built. |
+| 4 | `build-base-chain` | Builds `preflight → common → remote-desktop → gnome → android-studio-for-platform` from cicd-foundation. **Skipped when the base image already exists.** |
+| 5 | `build-image` | Builds and pushes the demo layer on top of that base, via the shared `common-docker-image-build` ClusterWorkflowTemplate. |
+| 6 | `build-snapshot` | Provisions a builder workstation, then snapshots its persistent disk. |
+| 7 | `test-artifacts` | Boots a GPU test workstation from the snapshot and runs `files/test_artifacts.bats` on it. |
+| 8 | `promote-snapshot` | Moves the `is-latest=true` label onto the validated snapshot **and** publishes the `voltron-demo-latest` workstation config built from it. |
 
 An `onExit` handler deletes the credentials Secret whatever the outcome.
 
@@ -99,8 +107,11 @@ gcloud workstations start "${USER}-voltron" \
     --cluster=sdv-cluster --config=voltron-demo-latest
 ```
 
-The remote desktop (GNOME streamed in-browser via Apache Guacamole) is served on
-port 80, i.e. at the workstation's own hostname:
+The remote desktop is served on port 80, i.e. at the workstation's own hostname.
+It is a headless X server captured by Selkies and encoded on the T4's NVENC, not
+the GNOME/Guacamole session inherited from the base image — the demo layer masks
+that stack deliberately, since compositing a GNOME session on this hardware falls
+back to llvmpipe. See `docker/README.md` in `sdv-demos` for the full rationale.
 
 ```bash
 gcloud workstations describe "${USER}-voltron" \
@@ -233,25 +244,73 @@ namespace.
 
 ## Images
 
+This module builds everything it consumes. Nothing is taken from a registry it
+does not populate itself.
+
 | Role | Image |
 |------|-------|
-| Base, consumed read-only | `<region>-docker.pkg.dev/<project>/horizon-sdv/android-studio-for-platform:latest` |
-| Produced by this module | `<region>-docker.pkg.dev/<project>/horizon-sdv/voltron-demo:latest` |
+| cicd-foundation chain (built here) | `<region>-docker.pkg.dev/<project>/horizon-sdv/cicd-foundation-{preflight,common,remote-desktop,gnome,android-studio-for-platform}:<ref>` |
+| Demo layer (built here) | `<region>-docker.pkg.dev/<project>/horizon-sdv/voltron-demo:latest` |
+
+### Why the base image is built rather than consumed
+
+`sdv-demos` ships no base image. Its `docker/skaffold.yaml` `requires:` the
+cicd-foundation Android Studio for Platform config at an immutable ref, and
+skaffold builds that dependency chain to produce the `BASE_IMAGE` for the demo
+layer:
+
+```text
+preflight → common → remote-desktop → gnome → android-studio-for-platform
+                                                    └── sdv-asfp-carla (sdv-demos)
+```
+
+This pipeline does the same thing, for two reasons.
+
+**Provenance.** Two unrelated images called `android-studio-for-platform` exist
+in this project: the cicd-foundation one, and the one Horizon's own
+`workloads/cloud-workstations/.../horizon-asfp` pipeline builds from
+`cloud-workstations-custom-image-examples`. Depending on a prebuilt image meant
+depending on a name that is ambiguous by construction. The `cicd-foundation-`
+prefix makes the provenance of every layer legible from the image name alone.
+
+**Drift.** A prebuilt image tracked by a floating tag can silently fall behind
+the ref sdv-demos declares, which builds the demo layer on a base its Dockerfile
+was never tested against. The ref is now pinned in
+[`argo-workflows/values.yaml`](argo-workflows/values.yaml) and **asserted
+against sdv-demos on every run**, so drift fails the pipeline instead of
+quietly changing what it produces.
 
 > [!NOTE]
-> The ASfP base image is built and published by the separate `horizon-asfp`
-> workstation-image pipeline. This module must never write that tag; doing so
-> would silently replace the platform's base image.
+> The chain is built only when `cicd-foundation-android-studio-for-platform:<ref>`
+> is absent. Only the first run after a ref bump pays for it; every run after
+> that skips those five steps entirely.
+
+### Bumping the base image
+
+1. Bump the ref in `sdv-demos/docker/skaffold.yaml`, following the review
+   procedure in that repository's `docker/README.md`.
+2. Set `spec.cicdFoundation.ref` here to match.
+
+Doing only one of the two is safe in the sense that it cannot produce a
+mismatched image: `assert-pinned-ref` fails the run first.
 
 ## Dependencies
 
 Hard dependency on **`workloads-common`**, which publishes the
 `common-docker-image-build` ClusterWorkflowTemplate.
 
-That template derives its build context from the Dockerfile directory, which is
-why `sdv-demos` keeps its Dockerfile at the repository root. It runs buildkit, so
-the `# syntax=docker/dockerfile:1.4` directive and the `COPY --chmod=` flags used
-throughout that Dockerfile are honoured — Kaniko would not honour them reliably.
+That template runs buildkit, so the `# syntax=docker/dockerfile:1.4` directive
+and the `COPY --chmod=` flags used throughout the sdv-demos Dockerfile are
+honoured — Kaniko would not honour them reliably.
+
+> [!IMPORTANT]
+> The base chain requires the **`contextDir`** parameter on
+> `common-docker-image-build`. Two cicd-foundation layers build against a
+> context wider than their own directory (`preflight` against
+> `apps/workstations`, `common` against the repository root), which the template
+> could not express while the context was forced to equal the Dockerfile
+> directory. The parameter defaults to `dockerfileDir`, so existing callers are
+> unaffected.
 
 ## Verifying changes
 
