@@ -82,6 +82,23 @@ localRepoMountPath: "/workspace-local"
 Then pass relative paths in `dockerfileDir`. The template automatically
 prefixes them with `localRepoMountPath`.
 
+## Build context separate from the Dockerfile directory
+
+By default the build context is the Dockerfile directory. Dockerfiles that
+`COPY` from outside their own directory need a wider context, which is what the
+optional `contextDir` parameter provides. It defaults to empty, meaning
+`dockerfileDir` is used, so existing callers are unaffected.
+
+```bash
+argo submit --from clusterworkflowtemplate/common-docker-image-build -n workflows \
+  -p dockerfileDir=apps/workstations/common \
+  -p contextDir=. \
+  ...
+```
+
+The paths follow the same rules as `dockerfileDir`: relative to `/workspace`
+(or to `localRepoMountPath`), or absolute.
+
 ## Common Options (values.yaml)
 
 - `clusterWorkflowTemplateName`: ClusterWorkflowTemplate name (default: `common-docker-image-build`)

@@ -49,6 +49,13 @@ spec:
             value: v0.24.0
           - name: dockerfileDir
             value: .
+          # Build context, when it differs from the Dockerfile directory.
+          # Empty (the default) keeps the historical behaviour of context ==
+          # dockerfileDir, so existing callers are unaffected. Set this for
+          # Dockerfiles that COPY from outside their own directory, e.g. a
+          # Dockerfile at apps/x/Dockerfile built against the repository root.
+          - name: contextDir
+            value: ""
           - name: buildArgs
             value: ""
           - name: platform
@@ -101,6 +108,8 @@ spec:
             value: "{{ "{{" }}inputs.parameters.dockerCredentialsUrl{{ "}}" }}"
           - name: DOCKERFILE_DIR
             value: "{{ "{{" }}inputs.parameters.dockerfileDir{{ "}}" }}"
+          - name: CONTEXT_DIR_INPUT
+            value: "{{ "{{" }}inputs.parameters.contextDir{{ "}}" }}"
           - name: BUILD_ARGS
             value: "{{ "{{" }}inputs.parameters.buildArgs{{ "}}" }}"
           - name: PLATFORM
@@ -164,7 +173,14 @@ spec:
               echo "IMAGE_TAG not set, skipping build."
               exit 0
             fi
-            CONTEXT_DIR="${DOCKERFILE_DIR}"
+            # Default the context to the Dockerfile directory, which is what
+            # every caller relied on before contextDir existed. A non-empty
+            # contextDir overrides it, for Dockerfiles that COPY from paths
+            # outside their own directory.
+            CONTEXT_DIR="${CONTEXT_DIR_INPUT:-}"
+            if [ -z "${CONTEXT_DIR}" ]; then
+              CONTEXT_DIR="${DOCKERFILE_DIR}"
+            fi
             CONTEXT_ROOT="/workspace/${CONTEXT_DIR}"
             DOCKERFILE_ROOT="/workspace/${DOCKERFILE_DIR}"
             if [ "${CONTEXT_DIR#/}" != "${CONTEXT_DIR}" ]; then
