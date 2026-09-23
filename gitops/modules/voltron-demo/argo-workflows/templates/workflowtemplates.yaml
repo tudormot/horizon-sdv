@@ -1,0 +1,504 @@
+# Copyright (c) 2026 Accenture, All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# WorkflowTemplates for module voltron-demo (Horizon catalog: exposed).
+# Argo Events Sensors: templates/sensors.yaml.
+#
+# The image sources (Dockerfile, docker/docker-bake.hcl, and all assets) live in
+# the internal Git-on-Borg repository sdv-demos and are cloned at run time;
+# nothing is vendored here. Authentication needs no input from the user. The
+# workflow pods run under Workload Identity, and each credential-consuming step
+# mints a short lived OAuth token for that service account from the GKE metadata
+# server. The service account is listed as a `robot` reader on the Git-on-Borg
+# `sdv` host, which is the only identity class that host authorises over HTTPS
+# (its human readers are MDB groups, and those resolve only over sso:// and
+# rpc://).
+#
+# Both the cicd-foundation base layers (preflight, common, remote-desktop with
+# INSTALL_GUACAMOLE=false, and android-studio-for-platform) and the demo layer
+# are built as a single BuildKit target graph from sdv-demos/docker/docker-bake.hcl,
+# with intermediate layers cached in Artifact Registry via CACHE_REPO.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: {{ .Values.parentModuleName }}-init
+  namespace: {{ .Values.workflowNamespace }}
+  labels:
+    app.kubernetes.io/name: init
+    horizon-sdv.io/expose: "true"
+    horizon-sdv.io/module: {{ .Values.parentModuleName }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+spec:
+  entrypoint: run-init
+  serviceAccountName: {{ include "voltron-demo.workflowServiceAccountName" . }}
+  archiveLogs: true
+  ttlStrategy:
+    secondsAfterCompletion: {{ .Values.workflowDefaults.ttlStrategy.secondsAfterCompletion }}
+    secondsAfterFailure: {{ .Values.workflowDefaults.ttlStrategy.secondsAfterFailure }}
+  arguments:
+    parameters:
+      - name: horizonSubmittedFrom
+        value: ""
+        description: Populated by the Developer Portal / Horizon CLI. Leave empty.
+  templates:
+    - name: run-init
+      dag:
+        tasks:
+          - name: preflight-sdv-demos
+            template: preflight-sdv-demos
+
+    # Cheap preflight. Catches a revoked robot grant, an unreachable repository
+    # or a missing revision in seconds, rather than after a multi-GB image build.
+    #
+    # Two containers because no single available image can do both halves: the
+    # metadata server needs an HTTP client (google/cloud-sdk:alpine has curl but
+    # no git for the check we want) and the check itself needs git. They share an
+    # emptyDir so the credential never leaves the pod.
+    - name: preflight-sdv-demos
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
+        - name: gob-token
+          emptyDir:
+            medium: Memory
+      initContainers:
+        - name: mint-gob-token
+          image: {{ .Values.spec.cloudSdkImage }}
+          command: [sh, /scripts/mint-gob-token.sh]
+          env:
+            - name: TOKEN_DIR
+              value: /gob-token
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: gob-token
+              mountPath: /gob-token
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              memory: "256Mi"
+      container:
+        image: {{ .Values.spec.gitImage }}
+        command: [sh, -c]
+        env:
+          - name: SDV_DEMOS_REPO
+            value: {{ .Values.spec.sdvDemosRepo | quote }}
+          - name: SDV_DEMOS_REVISION
+            value: {{ .Values.spec.sdvDemosRevision | quote }}
+          - name: GIT_TERMINAL_PROMPT
+            value: "0"
+        volumeMounts:
+          - name: gob-token
+            mountPath: /gob-token
+            readOnly: true
+        args:
+          - |
+            set -eu
+            umask 077
+
+            GIT_USERNAME=$(cat /gob-token/username)
+            echo "Authenticating to Git-on-Borg as ${GIT_USERNAME}."
+
+            # Netscape cookie format: domain, include-subdomains, path, secure,
+            # expiry, name, value. Git-on-Borg reads the pair from the value.
+            printf '.googlesource.com\tTRUE\t/\tTRUE\t0\to\t%s=%s\n' \
+              "${GIT_USERNAME}" "$(cat /gob-token/password)" > "${HOME}/.gitcookies"
+            chmod 600 "${HOME}/.gitcookies"
+
+            git config --global http.cookiefile "${HOME}/.gitcookies"
+            git config --global --unset-all credential.helper 2>/dev/null || true
+            # Large Git-on-Borg fetches are markedly more reliable over HTTP/1.1.
+            git config --global http.version HTTP/1.1
+
+            echo "Checking ${SDV_DEMOS_REPO} at revision ${SDV_DEMOS_REVISION}..."
+            if ! LS_REMOTE=$(git ls-remote --heads "${SDV_DEMOS_REPO}" "${SDV_DEMOS_REVISION}" 2>&1); then
+              echo "ERROR: could not reach ${SDV_DEMOS_REPO}."
+              echo "If this is PERMISSION_DENIED_BY_HOST_ACL, the service account is"
+              echo "not (or no longer) a 'robot' reader on the Git-on-Borg sdv host."
+              echo "See the IAM section of this module's README."
+              echo "${LS_REMOTE}"
+              exit 1
+            fi
+            if [ -z "${LS_REMOTE}" ]; then
+              echo "ERROR: revision '${SDV_DEMOS_REVISION}' does not exist on ${SDV_DEMOS_REPO}."
+              exit 1
+            fi
+            echo "OK: ${LS_REMOTE}"
+        resources:
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+          limits:
+            memory: "512Mi"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: {{ .Values.parentModuleName }}-execute
+  namespace: {{ .Values.workflowNamespace }}
+  labels:
+    app.kubernetes.io/name: execute
+    horizon-sdv.io/expose: "true"
+    horizon-sdv.io/module: {{ .Values.parentModuleName }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "7"
+spec:
+  entrypoint: run-execute
+  # Remove the per-run credentials Secret whatever the outcome of the DAG.
+  onExit: cleanup-gob-git-creds
+  serviceAccountName: {{ include "voltron-demo.workflowServiceAccountName" . }}
+  archiveLogs: true
+  podMetadata:
+    annotations:
+      cluster-autoscaler.kubernetes.io/safe-to-evict: "false"
+  ttlStrategy:
+    secondsAfterCompletion: {{ .Values.workflowDefaults.ttlStrategy.secondsAfterCompletion }}
+    secondsAfterFailure: {{ .Values.workflowDefaults.ttlStrategy.secondsAfterFailure }}
+  arguments:
+    parameters:
+      - name: horizonSubmittedFrom
+        value: ""
+        description: Populated by the Developer Portal / Horizon CLI. Leave empty.
+  templates:
+    - name: run-execute
+      dag:
+        tasks:
+          - name: prepare-gob-git-creds
+            template: prepare-gob-git-creds
+
+          # Delegates to the shared ClusterWorkflowTemplate from module
+          # workloads-common, executing sdv-demos/docker/docker-bake.hcl via
+          # `docker buildx bake` against its buildkitd sidecar.
+          - name: build-image
+            depends: prepare-gob-git-creds.Succeeded
+            templateRef:
+              name: {{ .Values.clusterWorkflowTemplateName | quote }}
+              template: build
+              clusterScope: true
+            arguments:
+              artifacts:
+                - name: source
+                  path: /workspace
+                  git:
+                    repo: {{ .Values.spec.sdvDemosRepo | quote }}
+                    revision: {{ .Values.spec.sdvDemosRevision | quote }}
+                    depth: 1
+                    usernameSecret:
+                      name: '{{ "{{" }}workflow.uid{{ "}}" }}-sdv-demos-git-creds'
+                      key: username
+                    passwordSecret:
+                      name: '{{ "{{" }}workflow.uid{{ "}}" }}-sdv-demos-git-creds'
+                      key: password
+              parameters:
+                - name: horizonSubmittedFrom
+                  value: '{{ "{{" }}workflow.parameters.horizonSubmittedFrom{{ "}}" }}'
+                - name: cloudProject
+                  value: {{ .Values.gcpProjectId | quote }}
+                - name: cloudRegion
+                  value: {{ .Values.gcpRegion | quote }}
+                - name: dockerArtifactPathName
+                  value: {{ .Values.spec.dockerArtifactPathName | quote }}
+                - name: imageTag
+                  value: {{ .Values.spec.imageTag | quote }}
+                - name: dockerfileDir
+                  value: "."
+                - name: bakeFile
+                  value: "docker/docker-bake.hcl"
+                - name: buildArgs
+                  value: |
+                    CICD_FOUNDATION_REF={{ .Values.spec.cicdFoundationRef }}
+                    CACHE_REPO={{ include "voltron-demo.cacheRepo" . }}
+
+          - name: build-snapshot
+            depends: build-image.Succeeded
+            template: run-build-snapshot
+            arguments:
+              parameters:
+                - name: workstationCluster
+                  value: {{ .Values.spec.workstationCluster | quote }}
+                - name: builderConfig
+                  value: {{ .Values.spec.builderConfig | quote }}
+
+          - name: test-artifacts
+            depends: build-snapshot.Succeeded
+            template: run-test-artifacts
+            arguments:
+              parameters:
+                - name: workstationCluster
+                  value: {{ .Values.spec.workstationCluster | quote }}
+                - name: testerConfig
+                  value: 'tester-config-{{ "{{" }}workflow.uid{{ "}}" }}'
+                - name: candidateSnapshotName
+                  value: '{{ "{{" }}tasks.build-snapshot.outputs.parameters.candidateSnapshotName{{ "}}" }}'
+
+          - name: promote-snapshot
+            depends: test-artifacts.Succeeded
+            template: run-promote-snapshot
+            arguments:
+              parameters:
+                - name: workstationCluster
+                  value: {{ .Values.spec.workstationCluster | quote }}
+                - name: candidateSnapshotName
+                  value: '{{ "{{" }}tasks.build-snapshot.outputs.parameters.candidateSnapshotName{{ "}}" }}'
+
+    # Publishes the per-run Secret that Argo's git artifact reads, since that
+    # artifact accepts only usernameSecret/passwordSecret, never a cookie file.
+    #
+    # Split across two containers out of necessity: the kubectl image ships no
+    # HTTP client at all, so it cannot reach the metadata server, and the
+    # cloud-sdk image ships no kubectl. Handing the token between them through a
+    # memory-backed emptyDir keeps it inside the pod; passing it as an Argo
+    # output parameter would persist it in the Workflow object for anyone with
+    # read access to this namespace.
+    - name: prepare-gob-git-creds
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
+        - name: gob-token
+          emptyDir:
+            medium: Memory
+      initContainers:
+        - name: mint-gob-token
+          image: {{ .Values.spec.cloudSdkImage }}
+          command: [sh, /scripts/mint-gob-token.sh]
+          env:
+            - name: TOKEN_DIR
+              value: /gob-token
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: gob-token
+              mountPath: /gob-token
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              memory: "256Mi"
+      container:
+        image: {{ .Values.spec.kubectlImage }}
+        command: [sh, -c]
+        env:
+          - name: WORKFLOW_UID
+            value: '{{ "{{" }}workflow.uid{{ "}}" }}'
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+        volumeMounts:
+          - name: gob-token
+            mountPath: /gob-token
+            readOnly: true
+        args:
+          - |
+            set -eu
+
+            echo "Publishing credentials for $(cat /gob-token/username)."
+
+            SECRET_NAME="${WORKFLOW_UID}-sdv-demos-git-creds"
+            kubectl delete secret --ignore-not-found "${SECRET_NAME}" -n "${POD_NAMESPACE}"
+            # --from-file, not --from-literal: the token would otherwise appear in
+            # this container's argument list, which is visible in the pod spec.
+            kubectl create secret generic "${SECRET_NAME}" -n "${POD_NAMESPACE}" \
+              --from-file=username=/gob-token/username \
+              --from-file=password=/gob-token/password
+            echo "Created Secret ${SECRET_NAME} in ${POD_NAMESPACE}."
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            memory: "256Mi"
+
+    - name: cleanup-gob-git-creds
+      container:
+        image: {{ .Values.spec.kubectlImage }}
+        command: [sh, -c]
+        env:
+          - name: WORKFLOW_UID
+            value: '{{ "{{" }}workflow.uid{{ "}}" }}'
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+        args:
+          - |
+            set -eu
+            kubectl delete secret --ignore-not-found \
+              "${WORKFLOW_UID}-sdv-demos-git-creds" -n "${POD_NAMESPACE}"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            memory: "256Mi"
+
+    # ------------------------------------------------------------------------
+    # Cloud Workstations / Compute Engine steps.
+    #
+    # These drive gcloud rather than Config Connector (KCC). The cluster runs
+    # the GKE Config Connector add-on at v1.126.0, which ships WorkstationCluster
+    # but neither WorkstationConfig nor Workstation, so for most of this there is
+    # no CRD to use at all. Availability aside, the builder/tester lifecycle is
+    # one-shot and imperative and hinges on a persistent disk name that only
+    # exists at runtime, which a reconciling controller models poorly. The one
+    # resource that would suit KCC is the long-lived promoted config; see
+    # README.md for the full rationale and the conditions for revisiting it.
+    #
+    # Each step's body lives under files/ and is mounted at /scripts by
+    # configmap-scripts.yaml, so the shell code can be read, diffed, linted and
+    # executed outside the cluster instead of being embedded in this YAML.
+    # ------------------------------------------------------------------------
+    - name: run-build-snapshot
+      inputs:
+        parameters:
+          - name: workstationCluster
+          - name: builderConfig
+      outputs:
+        parameters:
+          - name: candidateSnapshotName
+            valueFrom:
+              path: /tmp/candidate_snapshot_name
+      container:
+        image: {{ .Values.spec.cloudSdkImage }}
+        command: [sh, /scripts/build-snapshot.sh]
+        env:
+          - name: PROJECT
+            value: {{ .Values.gcpProjectId | quote }}
+          - name: REGION
+            value: {{ .Values.gcpRegion | quote }}
+          - name: CLUSTER
+            value: '{{ "{{" }}inputs.parameters.workstationCluster{{ "}}" }}'
+          - name: CONFIG
+            value: '{{ "{{" }}inputs.parameters.builderConfig{{ "}}" }}'
+          - name: WORKFLOW_UID
+            value: '{{ "{{" }}workflow.uid{{ "}}" }}'
+          - name: CONTAINER_IMAGE
+            value: {{ include "voltron-demo.outputImage" . | quote }}
+        volumeMounts:
+          - name: scripts
+            mountPath: /scripts
+            readOnly: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            memory: "512Mi"
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
+
+    - name: run-test-artifacts
+      inputs:
+        parameters:
+          - name: workstationCluster
+          - name: testerConfig
+          - name: candidateSnapshotName
+      container:
+        image: {{ .Values.spec.cloudSdkImage }}
+        command: [sh, /scripts/test-artifacts.sh]
+        env:
+          - name: PROJECT
+            value: {{ .Values.gcpProjectId | quote }}
+          - name: REGION
+            value: {{ .Values.gcpRegion | quote }}
+          - name: CLUSTER
+            value: '{{ "{{" }}inputs.parameters.workstationCluster{{ "}}" }}'
+          - name: CONFIG
+            value: '{{ "{{" }}inputs.parameters.testerConfig{{ "}}" }}'
+          - name: WORKFLOW_UID
+            value: '{{ "{{" }}workflow.uid{{ "}}" }}'
+          - name: CANDIDATE_SNAP
+            value: '{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}'
+          - name: CONTAINER_IMAGE
+            value: {{ include "voltron-demo.outputImage" . | quote }}
+          - name: MACHINE_TYPE
+            value: {{ .Values.spec.testerMachineType | quote }}
+          - name: ACCELERATOR_TYPE
+            value: {{ .Values.spec.acceleratorType | quote }}
+          - name: ACCELERATOR_COUNT
+            value: {{ .Values.spec.acceleratorCount | quote }}
+          - name: BATS_FILE
+            value: /scripts/test_artifacts.bats
+        volumeMounts:
+          - name: scripts
+            mountPath: /scripts
+            readOnly: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            memory: "512Mi"
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
+
+    - name: run-promote-snapshot
+      inputs:
+        parameters:
+          - name: workstationCluster
+          - name: candidateSnapshotName
+      container:
+        image: {{ .Values.spec.cloudSdkImage }}
+        command: [sh, /scripts/promote-snapshot.sh]
+        env:
+          - name: PROJECT
+            value: {{ .Values.gcpProjectId | quote }}
+          - name: REGION
+            value: {{ .Values.gcpRegion | quote }}
+          - name: CLUSTER
+            value: '{{ "{{" }}inputs.parameters.workstationCluster{{ "}}" }}'
+          - name: CANDIDATE_SNAP
+            value: '{{ "{{" }}inputs.parameters.candidateSnapshotName{{ "}}" }}'
+          - name: PROMOTED_CONFIG
+            value: {{ .Values.spec.promotedConfig | quote }}
+          - name: CONTAINER_IMAGE
+            value: {{ include "voltron-demo.outputImage" . | quote }}
+          - name: MACHINE_TYPE
+            value: {{ .Values.spec.testerMachineType | quote }}
+          - name: ACCELERATOR_TYPE
+            value: {{ .Values.spec.acceleratorType | quote }}
+          - name: ACCELERATOR_COUNT
+            value: {{ .Values.spec.acceleratorCount | quote }}
+        volumeMounts:
+          - name: scripts
+            mountPath: /scripts
+            readOnly: true
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            memory: "512Mi"
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ .Values.parentModuleName }}-scripts
+            defaultMode: 0555
